@@ -7,7 +7,7 @@ import threading
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# --- 1. RENDER UCHUN PORT OCHUVCHI WEB-SERVER ---
+# --- RENDER UCHUN PORT OCHUVchi WEB-SERVER ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -19,10 +19,9 @@ def run_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-# Veb-serverni alohida oqimda ishga tushiramiz
 threading.Thread(target=run_server, daemon=True).start()
 
-# --- 2. BOT VA AI SOZLAMALARI ---
+# --- BOT VA GROQ API SOZLAMALARI ---
 TOKEN = "8830513411:AAEsmDgU5uMJGoeY22bKpzzaYCrUIEnzboA"
 GROQ_API_KEY = "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"
 
@@ -38,25 +37,31 @@ async def start_cmd(message: types.Message):
 async def chat_with_ai(message: types.Message):
     user_text = message.text
     
-    # Groq API ga so'rov yuborish
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama3-70b-8192",  # Barqaror ishlaydigan Groq modeli
         "messages": [{"role": "user", "content": user_text}]
     }
     
     try:
-        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers)
+        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=15)
         res_json = response.json()
-        answer = res_json["choices"][0]["message"]["content"]
-        await message.answer(answer)
+        
+        if "choices" in res_json:
+            answer = res_json["choices"][0]["message"]["content"]
+            await message.answer(answer)
+        else:
+            error_msg = res_json.get("error", {}).get("message", "Noma'lum xatolik")
+            await message.answer(f"API xatoligi: {error_msg}")
     except Exception as e:
-        await message.answer("Kechirasiz, sun'iy intellektga ulanishda xatolik yuz berdi.")
+            await message.answer("Kechirasiz, sun'iy intellektga ulanishda tarmoq xatoligi yuz berdi.")
 
 async def main():
+    # Eski ulanishlarni tozalash uchun webhookni o'chiramiz va polling boshlaymiz
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
