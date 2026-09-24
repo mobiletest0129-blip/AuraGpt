@@ -42,10 +42,11 @@ async def chat_with_ai(message: types.Message):
         "Content-Type": "application/json"
     }
     
-    # Hozirgi kunda Groq'da eng barqaror ishlaydigan asosiy modellar
+    # Siz ko'rsatgan barcha 3 ta model ketma-ketlikda
     models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant"
+        'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'openai/gpt-oss-120b'
     ]
     
     answer = None
@@ -76,7 +77,7 @@ async def chat_with_ai(message: types.Message):
     if answer:
         await message.answer(answer)
     else:
-        await message.answer(f"⚠️ Xatolik tafsiloti:\n<code>{last_error}</code>\n\nIltimos, shu matnni menga ko'rsating! 🔄", parse_mode="HTML")
+        await message.answer(f"⚠️ Xatolik tafsiloti:\n<code>{last_error}</code>\n\nBarcha modellar sinab ko'rildi, lekin javob olinmadi. 🔄", parse_mode="HTML")
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
