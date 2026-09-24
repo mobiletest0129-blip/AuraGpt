@@ -37,12 +37,15 @@ async def start_cmd(message: types.Message):
 async def chat_with_ai(message: types.Message):
     user_text = message.text
     
+    # Kutish haqida xabar
+    waiting_msg = await message.answer("⏳ O'ylayapman...")
+
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    # Siz ko'rsatgan barcha 3 ta model ketma-ketlikda
+    # Siz so'ragan barcha 3 ta model
     models = [
         'llama-3.3-70b-versatile',
         'llama-3.1-8b-instant',
@@ -74,10 +77,16 @@ async def chat_with_ai(message: types.Message):
             last_error = str(e)
             continue
             
+    # Kutish xabarini o'chiramiz
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
+    except:
+        pass
+        
     if answer:
         await message.answer(answer)
     else:
-        await message.answer(f"⚠️ Xatolik tafsiloti:\n<code>{last_error}</code>\n\nBarcha modellar sinab ko'rildi, lekin javob olinmadi. 🔄", parse_mode="HTML")
+        await message.answer(f"⚠️ Barcha modellar sinab ko'rildi, lekin xatolik yuz berdi:\n<code>{last_error}</code>", parse_mode="HTML")
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
