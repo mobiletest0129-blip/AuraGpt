@@ -31,7 +31,7 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    await message.answer("Assalomu alaykum! Men AURAgpt botiman. Menga istalgan savol yozishingiz mumkin.")
+    await message.answer("Assalomu alaykum! 😊 Men AURAgpt botiman. 🤖 Menga istalgan savol yozishingiz mumkin! ✨")
 
 @dp.message()
 async def chat_with_ai(message: types.Message):
@@ -42,8 +42,11 @@ async def chat_with_ai(message: types.Message):
         "Content-Type": "application/json"
     }
     data = {
-        "model": "llama3-70b-8192",  # Barqaror ishlaydigan Groq modeli
-        "messages": [{"role": "user", "content": user_text}]
+        "model": "llama3-70b-8192",
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant. Always include friendly emojis and smiles (like 😊, ✨, 🚀, 🤖) in your responses to make them lively and engaging."},
+            {"role": "user", "content": user_text}
+        ]
     }
     
     try:
@@ -55,12 +58,11 @@ async def chat_with_ai(message: types.Message):
             await message.answer(answer)
         else:
             error_msg = res_json.get("error", {}).get("message", "Noma'lum xatolik")
-            await message.answer(f"API xatoligi: {error_msg}")
+            await message.answer(f"⚠️ API xatoligi: {error_msg} 😕")
     except Exception as e:
-            await message.answer("Kechirasiz, sun'iy intellektga ulanishda tarmoq xatoligi yuz berdi.")
+            await message.answer("⚠️ Kechirasiz, sun'iy intellektga ulanishda tarmoq xatoligi yuz berdi. Birozdan so'ng qayta urinib ko'ring! 🔄")
 
 async def main():
-    # Eski ulanishlarni tozalash uchun webhookni o'chiramiz va polling boshlaymiz
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
