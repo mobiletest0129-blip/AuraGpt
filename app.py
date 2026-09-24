@@ -22,7 +22,7 @@ def run_server():
 threading.Thread(target=run_server, daemon=True).start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
-TOKEN = "8830513411:AAEsmDgU5uMJGoeY22bKpzzaYCrUIEnzboA"
+TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
 GROQ_API_KEY = "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"
 
 logging.basicConfig(level=logging.INFO)
