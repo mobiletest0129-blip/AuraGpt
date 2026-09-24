@@ -41,26 +41,37 @@ async def chat_with_ai(message: types.Message):
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    data = {
-        "model": "llama3-70b-8192",
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant. Always include friendly emojis and smiles (like 😊, ✨, 🚀, 🤖) in your responses to make them lively and engaging."},
-            {"role": "user", "content": user_text}
-        ]
-    }
     
-    try:
-        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=15)
-        res_json = response.json()
-        
-        if "choices" in res_json:
-            answer = res_json["choices"][0]["message"]["content"]
-            await message.answer(answer)
-        else:
-            error_msg = res_json.get("error", {}).get("message", "Noma'lum xatolik")
-            await message.answer(f"⚠️ API xatoligi: {error_msg} 😕")
-    except Exception as e:
-            await message.answer("⚠️ Kechirasiz, sun'iy intellektga ulanishda tarmoq xatoligi yuz berdi. Birozdan so'ng qayta urinib ko'ring! 🔄")
+    # Siz xohlagan barcha faol modellar ro'yxati (birinchisi ishlamasa, keyingisi avtomatik urinib ko'radi)
+    models = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768"
+    ]
+    
+    answer = None
+    for model_name in models:
+        data = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant. Always include friendly emojis and smiles (like 😊, ✨, 🚀, 🤖) in your responses to make them lively and engaging."},
+                {"role": "user", "content": user_text}
+            ]
+        }
+        try:
+            response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=15)
+            res_json = response.json()
+            
+            if "choices" in res_json:
+                answer = res_json["choices"][0]["message"]["content"]
+                break # Agar model muvaffaqiyatli javob bersa, siklni to'xtatamiz
+        except Exception:
+            continue
+            
+    if answer:
+        await message.answer(answer)
+    else:
+        await message.answer("⚠️ Kechirasiz, sun'iy intellekt modellariga ulanishda xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring! 🔄")
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
