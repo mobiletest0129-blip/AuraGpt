@@ -31,21 +31,21 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    await message.answer("Assalomu alaykum! 😊 Men AURAgpt botiman. 🤖 Menga istalgan savol yozishingiz mumkin! ✨")
+    await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 O'zbekcha, Ruscha yoki Inglizcha tillarda istalgan savol yozishingiz mumkin! ✨")
 
 @dp.message()
 async def chat_with_ai(message: types.Message):
     user_text = message.text
     
-    # Kutish haqida xabar
-    waiting_msg = await message.answer("⏳ O'ylayapman...")
+    # Kutish haqida xabar (3 tilda)
+    waiting_msg = await message.answer("⏳ O'ylayapman... / Думаю... / Thinking...")
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    # Siz so'ragan barcha 3 ta model
+    # 3 ta model ketma-ketligi
     models = [
         'llama-3.3-70b-versatile',
         'llama-3.1-8b-instant',
@@ -59,7 +59,10 @@ async def chat_with_ai(message: types.Message):
         data = {
             "model": model_name,
             "messages": [
-                {"role": "system", "content": "You are a helpful assistant. Always include friendly emojis and smiles (like 😊, ✨, 🚀, 🤖) in your responses."},
+                {
+                    "role": "system", 
+                    "content": "You are a helpful AI assistant. Detect the language of the user's message (Uzbek, Russian, or English) and reply in that exact same language. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
+                },
                 {"role": "user", "content": user_text}
             ],
             "max_tokens": 1024
@@ -86,7 +89,7 @@ async def chat_with_ai(message: types.Message):
     if answer:
         await message.answer(answer)
     else:
-        await message.answer(f"⚠️ Barcha modellar sinab ko'rildi, lekin xatolik yuz berdi:\n<code>{last_error}</code>", parse_mode="HTML")
+        await message.answer(f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>", parse_mode="HTML")
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
