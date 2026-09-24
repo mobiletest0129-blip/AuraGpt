@@ -30,11 +30,16 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 greeted_users = set()
+# Foydalanuvchilarning xabarlar tarixini saqlash uchun lug'at (Xotira)
+user_histories = {}
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    greeted_users.add(message.from_user.id)
-    await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 O'zbekcha, Ruscha yoki Inglizcha tillarda istalgan savol yozishingiz mumkin! ✨")
+    user_id = message.from_user.id
+    greeted_users.add(user_id)
+    # /start bosilganda tarixni tozalaymiz
+    user_histories[user_id] = []
+    await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 O'zbekcha, Ruscha yoki Inglizcha tillarda istalgan savol yozishingiz mumkin! Xotiram ishlayapti, oldingi gaplarimizni eslab qolaman! ✨")
 
 @dp.message()
 async def chat_with_ai(message: types.Message):
@@ -45,6 +50,10 @@ async def chat_with_ai(message: types.Message):
     if user_id not in greeted_users:
         greeted_users.add(user_id)
         welcome_prefix = "Assalomu alaykum! 😊 / Hello! 👋\n\n"
+
+    # Agar foydalanuvchining tarixi hali yo'q bo'lsa, ochamiz
+    if user_id not in user_histories:
+        user_histories[user_id] = []
 
     waiting_msg = await message.answer("⏳ O'ylayapman... / Думаю... / Thinking...")
 
@@ -59,19 +68,28 @@ async def chat_with_ai(message: types.Message):
         'openai/gpt-oss-120b'
     ]
     
+    # System prompt (Asosiy qoidalar)
+    system_prompt = {
+        "role": "system", 
+        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. If anyone asks who created you, who made you, or who is your developer, you must proudly answer that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
+    }
+
+    # Tarixga foydalanuvchining yangi xabarini qo'shamiz
+    user_histories[user_id].append({"role": "user", "content": user_text})
+    
+    # Xotiradagi xabarlar soni ko'payib ketmasa uchun oxirgi 10 ta xabarni olamiz (xotira hajmini saqlash uchun)
+    recent_history = user_histories[user_id][-10:]
+
+    # API'ga yuboriladigan to'liq xabarlar ro'yxati (System prompt + Tarix)
+    messages_payload = [system_prompt] + recent_history
+
     answer = None
     last_error = ""
     
     for model_name in models:
         data = {
             "model": model_name,
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. If anyone asks who created you, who made you, or who is your developer, you must proudly answer that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
-                },
-                {"role": "user", "content": user_text}
-            ],
+            "messages": messages_payload,
             "max_tokens": 1024
         }
         try:
@@ -80,6 +98,8 @@ async def chat_with_ai(message: types.Message):
             
             if "choices" in res_json:
                 answer = res_json["choices"][0]["message"]["content"]
+                # Botning javobini ham tarixga qo'shamiz (xotirada qolishi uchun)
+                user_histories[user_id].append({"role": "assistant", "content": answer})
                 break
             else:
                 last_error = res_json.get("error", {}).get("message", str(res_json))
@@ -95,6 +115,8 @@ async def chat_with_ai(message: types.Message):
     if answer:
         await message.answer(welcome_prefix + answer)
     else:
+        # Xatolik bo'lsa oxirgi xabarni tarixdan olib tashlaymiz
+        user_histories[user_id].pop()
         await message.answer(f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>", parse_mode="HTML")
 
 async def main():
