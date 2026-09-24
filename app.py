@@ -29,7 +29,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Foydalanuvchilar bilan birinchi marta salomlashganini eslab qolish uchun to'plam
 greeted_users = set()
 
 @dp.message(Command("start"))
@@ -42,7 +41,6 @@ async def chat_with_ai(message: types.Message):
     user_text = message.text
     user_id = message.from_user.id
     
-    # Agar foydalanuvchi /start bosmagan bo'lsa ham birinchi xabarda bir marta salomlashib o'tamiz
     welcome_prefix = ""
     if user_id not in greeted_users:
         greeted_users.add(user_id)
@@ -70,7 +68,7 @@ async def chat_with_ai(message: types.Message):
             "messages": [
                 {
                     "role": "system", 
-                    "content": "You are a helpful AI assistant. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language. Do not repeat long greetings if not necessary. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
+                    "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. If anyone asks who created you, who made you, or who is your developer, you must proudly answer that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
                 },
                 {"role": "user", "content": user_text}
             ],
