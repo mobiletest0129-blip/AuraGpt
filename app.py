@@ -29,15 +29,25 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# Foydalanuvchilar bilan birinchi marta salomlashganini eslab qolish uchun to'plam
+greeted_users = set()
+
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
+    greeted_users.add(message.from_user.id)
     await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 O'zbekcha, Ruscha yoki Inglizcha tillarda istalgan savol yozishingiz mumkin! ✨")
 
 @dp.message()
 async def chat_with_ai(message: types.Message):
     user_text = message.text
+    user_id = message.from_user.id
     
-    # Kutish haqida xabar (3 tilda)
+    # Agar foydalanuvchi /start bosmagan bo'lsa ham birinchi xabarda bir marta salomlashib o'tamiz
+    welcome_prefix = ""
+    if user_id not in greeted_users:
+        greeted_users.add(user_id)
+        welcome_prefix = "Assalomu alaykum! 😊 / Hello! 👋\n\n"
+
     waiting_msg = await message.answer("⏳ O'ylayapman... / Думаю... / Thinking...")
 
     headers = {
@@ -45,7 +55,6 @@ async def chat_with_ai(message: types.Message):
         "Content-Type": "application/json"
     }
     
-    # 3 ta model ketma-ketligi
     models = [
         'llama-3.3-70b-versatile',
         'llama-3.1-8b-instant',
@@ -61,7 +70,7 @@ async def chat_with_ai(message: types.Message):
             "messages": [
                 {
                     "role": "system", 
-                    "content": "You are a helpful AI assistant. Detect the language of the user's message (Uzbek, Russian, or English) and reply in that exact same language. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
+                    "content": "You are a helpful AI assistant. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language. Do not repeat long greetings if not necessary. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
                 },
                 {"role": "user", "content": user_text}
             ],
@@ -80,14 +89,13 @@ async def chat_with_ai(message: types.Message):
             last_error = str(e)
             continue
             
-    # Kutish xabarini o'chiramiz
     try:
         await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
     except:
         pass
         
     if answer:
-        await message.answer(answer)
+        await message.answer(welcome_prefix + answer)
     else:
         await message.answer(f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>", parse_mode="HTML")
 
