@@ -42,21 +42,23 @@ async def chat_with_ai(message: types.Message):
         "Content-Type": "application/json"
     }
     
-    # Siz xohlagan barcha faol modellar ro'yxati (birinchisi ishlamasa, keyingisi avtomatik urinib ko'radi)
+    # Hozirgi kunda Groq'da eng barqaror ishlaydigan asosiy modellar
     models = [
         "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768"
+        "llama-3.1-8b-instant"
     ]
     
     answer = None
+    last_error = ""
+    
     for model_name in models:
         data = {
             "model": model_name,
             "messages": [
-                {"role": "system", "content": "You are a helpful assistant. Always include friendly emojis and smiles (like 😊, ✨, 🚀, 🤖) in your responses to make them lively and engaging."},
+                {"role": "system", "content": "You are a helpful assistant. Always include friendly emojis and smiles (like 😊, ✨, 🚀, 🤖) in your responses."},
                 {"role": "user", "content": user_text}
-            ]
+            ],
+            "max_tokens": 1024
         }
         try:
             response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=15)
@@ -64,14 +66,17 @@ async def chat_with_ai(message: types.Message):
             
             if "choices" in res_json:
                 answer = res_json["choices"][0]["message"]["content"]
-                break # Agar model muvaffaqiyatli javob bersa, siklni to'xtatamiz
-        except Exception:
+                break
+            else:
+                last_error = res_json.get("error", {}).get("message", str(res_json))
+        except Exception as e:
+            last_error = str(e)
             continue
             
     if answer:
         await message.answer(answer)
     else:
-        await message.answer("⚠️ Kechirasiz, sun'iy intellekt modellariga ulanishda xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring! 🔄")
+        await message.answer(f"⚠️ Xatolik tafsiloti:\n<code>{last_error}</code>\n\nIltimos, shu matnni menga ko'rsating! 🔄", parse_mode="HTML")
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
