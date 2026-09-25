@@ -34,13 +34,19 @@ user_histories = {}
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    user_id = message.from_user.id
-    greeted_users.add(user_id)
-    user_histories[user_id] = []
-    await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Xotiram yangilandi, endi ismingiz va gaplarimizni eslab qolaman! ✨")
+    try:
+        user_id = message.from_user.id
+        greeted_users.add(user_id)
+        user_histories[user_id] = []
+        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Xotiram ishlayapti, savollaringizga tayyorman! ✨")
+    except Exception as e:
+        logging.error(f"Start xatosi: {e}")
 
 @dp.message()
 async def chat_with_ai(message: types.Message):
+    if not message.text:
+        return
+        
     user_text = message.text
     user_id = message.from_user.id
     
@@ -65,7 +71,6 @@ async def chat_with_ai(message: types.Message):
         'openai/gpt-oss-120b'
     ]
     
-    # YANGILANGAN SYSTEM PROMPT (Xotirani va kontekstni ishlatish uchun)
     system_prompt = {
         "role": "system", 
         "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details, such as their name, preferences, or facts they shared earlier. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
@@ -85,7 +90,7 @@ async def chat_with_ai(message: types.Message):
             "max_tokens": 1024
         }
         try:
-            response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=15)
+            response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=20)
             res_json = response.json()
             
             if "choices" in res_json:
@@ -106,7 +111,8 @@ async def chat_with_ai(message: types.Message):
     if answer:
         await message.answer(welcome_prefix + answer)
     else:
-        user_histories[user_id].pop()
+        if len(user_histories[user_id]) > 0:
+            user_histories[user_id].pop()
         await message.answer(f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>", parse_mode="HTML")
 
 async def main():
