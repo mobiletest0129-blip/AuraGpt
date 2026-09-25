@@ -7,12 +7,21 @@ import threading
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# --- RENDER UCHUN PORT OCHUVchi WEB-SERVER ---
+# --- RENDER UCHUN PORT OCHUVCHI WEB-SERVER (GET va HEAD so'rovlarini qo'llab-quvvatlaydi) ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
+        self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"AuraGpt bot is running 24/7!")
+        
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+        
+    def log_message(self, format, *args):
+        # Server loglarini toza saqlash uchun
+        pass
 
 def run_server():
     port = int(os.environ.get("PORT", 10000))
@@ -22,7 +31,7 @@ def run_server():
 threading.Thread(target=run_server, daemon=True).start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
-TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
+TOKEN = "YANGI_TOKENINGIZNI_SHUYERGA_YOZING"
 GROQ_API_KEY = "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"
 
 logging.basicConfig(level=logging.INFO)
@@ -108,12 +117,11 @@ async def chat_with_ai(message: types.Message):
     except:
         pass
         
-    if answer:
-        await message.answer(welcome_prefix + answer)
-    else:
-        if len(user_histories[user_id]) > 0:
-            user_histories[user_id].pop()
-        await message.answer(f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>", parse_mode="HTML")
+    fanswer = answer if answer else f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>"
+    if not answer and len(user_histories[user_id]) > 0:
+        user_histories[user_id].pop()
+        
+    await message.answer(welcome_prefix + fanswer, parse_mode="HTML" if not answer else None)
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
