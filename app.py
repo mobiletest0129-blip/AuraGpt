@@ -1,26 +1,25 @@
 import os
 import asyncio
 import logging
-import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+import aiohttp
 
-# --- RENDER UCHUN PORT OCHUVCHI WEB-SERVER (GET va HEAD so'rovlarini qo'llab-quvvatlaydi) ---
+# --- RENDER UCHUN ODDIY VA ISHONCHLI WEB-SERVER ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"AuraGpt bot is running 24/7!")
+        self.wfile.write(b"AuraGpt bot is active!")
         
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
         
     def log_message(self, format, *args):
-        # Server loglarini toza saqlash uchun
         pass
 
 def run_server():
@@ -28,7 +27,9 @@ def run_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-threading.Thread(target=run_server, daemon=True).start()
+# Veb-serverni alohida oqimda (thread) ishga tushiramiz
+server_thread = threading.Thread(target=run_server, daemon=True)
+server_thread.start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
 TOKEN = "YANGI_TOKENINGIZNI_SHUYERGA_YOZING"
@@ -92,25 +93,25 @@ async def chat_with_ai(message: types.Message):
     answer = None
     last_error = ""
     
-    for model_name in models:
-        data = {
-            "model": model_name,
-            "messages": messages_payload,
-            "max_tokens": 1024
-        }
-        try:
-            response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=20)
-            res_json = response.json()
-            
-            if "choices" in res_json:
-                answer = res_json["choices"][0]["message"]["content"]
-                user_histories[user_id].append({"role": "assistant", "content": answer})
-                break
-            else:
-                last_error = res_json.get("error", {}).get("message", str(res_json))
-        except Exception as e:
-            last_error = str(e)
-            continue
+    async with aiohttp.ClientSession() as session:
+        for model_name in models:
+            data = {
+                "model": model_name,
+                "messages": messages_payload,
+                "max_tokens": 1024
+            }
+            try:
+                async with session.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=20) as response:
+                    res_json = await response.json()
+                    if "choices" in res_json:
+                        answer = res_json["choices"][0]["message"]["content"]
+                        user_histories[user_id].append({"role": "assistant", "content": answer})
+                        break
+                    else:
+                        last_error = res_json.get("error", {}).get("message", str(res_json))
+            except Exception as e:
+                last_error = str(e)
+                continue
             
     try:
         await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
