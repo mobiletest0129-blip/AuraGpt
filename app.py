@@ -3,7 +3,7 @@ import asyncio
 import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 import aiohttp
 
@@ -48,15 +48,92 @@ async def start_cmd(message: types.Message):
         user_id = message.from_user.id
         greeted_users.add(user_id)
         user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Xotiram ishlayapti, savollaringizga tayyorman! ✨")
+        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Xotiram va rasm ko'rish qobiliyatim ishlayapti, savollaringizga tayyorman! ✨")
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-@dp.message()
-async def chat_with_ai(message: types.Message):
-    if not message.text:
-        return
+# --- RASMLARNI QABUL QILIB TAHLIL QILISH QISMI ---
+@dp.message(F.photo)
+async def handle_photo(message: types.Message):
+    user_id = message.from_user.id
+    
+    welcome_prefix = ""
+    if user_id not in greeted_users:
+        greeted_users.add(user_id)
+        welcome_prefix = "Assalomu alaykum! 😊 / Hello! 👋\n\n"
+
+    # Eng sifatli rasmni olamiz
+    photo = message.photo[-1]
+    file_info = await bot.get_file(photo.file_id)
+    file_path = file_info.file_path
+    
+    # Telegram serveridan rasmga to'g'ridan-to'g'ri havola
+    image_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+    
+    user_caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tushuntirib bering."
+
+    waiting_msg = await message.answer("🖼 Rasm tahlil qilinmoqda... / Анализирую изображение... / Analyzing image...")
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # Vision (ko'rishni qo'llab-quvvatlaydigan) model
+    vision_model = 'llama-3.2-11b-vision-preview'
+    
+    payload = {
+        "model": vision_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's caption or request (Uzbek, Russian, or English) and reply concisely in that exact same language, describing or answering about the image. Include friendly emojis."
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": user_caption
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url
+                        }
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 1024
+    }
+
+    answer = None
+    last_error = ""
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=30) as response:
+                res_json = await response.json()
+                if "choices" in res_json:
+                    answer = res_json["choices"][0]["message"]["content"]
+                else:
+                    last_error = res_json.get("error", {}).get("message", str(res_json))
+        except Exception as e:
+            last_error = str(e)
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
+    except:
+        pass
         
+    fanswer = answer if answer else f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>"
+    await message.answer(welcome_prefix + fanswer, parse_mode="HTML" if not answer else None)
+
+
+# --- ODDIY MATNLI XABarlar UCHUN ---
+@dp.message(F.text)
+async def chat_with_ai(message: types.Message):
     user_text = message.text
     user_id = message.from_user.id
     
