@@ -27,7 +27,6 @@ def run_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-# Veb-serverni alohida oqimda (thread) ishga tushiramiz
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
@@ -48,11 +47,11 @@ async def start_cmd(message: types.Message):
         user_id = message.from_user.id
         greeted_users.add(user_id)
         user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Xotiram va rasm ko'rish qobiliyatim ishlayapti, savollaringizga tayyorman! ✨")
+        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Xotiram va rasm tahlil qilish qobiliyatim ishlayapti, savollaringizga tayyorman! ✨")
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLARNI QABUL QILIB TAHLIL QILISH QISMI ---
+# --- RASMLARNI QABUL QILIB TAHLIL QILISH (VISION MODEL) ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
     user_id = message.from_user.id
@@ -79,8 +78,8 @@ async def handle_photo(message: types.Message):
         "Content-Type": "application/json"
     }
     
-    # Vision (ko'rishni qo'llab-quvvatlaydigan) model
-    vision_model = 'llama-3.2-11b-vision-preview'
+    # Vision-ni qo'llab-quvvatlovchi zamonaviy model
+    vision_model = 'qwen/qwen3.8-27b'
     
     payload = {
         "model": vision_model,
@@ -130,8 +129,7 @@ async def handle_photo(message: types.Message):
     fanswer = answer if answer else f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>"
     await message.answer(welcome_prefix + fanswer, parse_mode="HTML" if not answer else None)
 
-
-# --- ODDIY MATNLI XABarlar UCHUN ---
+# --- ODDIY MATNLI XABARLAR UCHUN ---
 @dp.message(F.text)
 async def chat_with_ai(message: types.Message):
     user_text = message.text
