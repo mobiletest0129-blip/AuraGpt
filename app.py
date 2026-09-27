@@ -52,16 +52,15 @@ async def start_cmd(message: types.Message):
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLARNI QABUL QILIB TAHLIL QILISH (VISION FALLBACK) ---
+# --- RASMLARNI QABUL QILIB TAHLIL QILISH ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
     user_id = message.from_user.id
     caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tushuntirib bering."
     
-    waiting_msg = await message.answer("🖼 Rasm tahlil qilinmoqda... / Анализирую изображение... / Analyzing image...")
+    waiting_msg = await message.answer("🖼 Rasm tahlil qilinmoqda... / Analysing image...")
 
     try:
-        # Rasmni yuklab olib base64 formatga o'tkazamiz
         photo = message.photo[-1]
         file_info = await bot.get_file(photo.file_id)
         downloaded_file = await bot.download_file(file_info.file_path)
@@ -72,11 +71,10 @@ async def handle_photo(message: types.Message):
             "Content-Type": "application/json"
         }
         
-        # Vision modellari ro'yxati (navbatma-navbat tekshiradi)
+        # Hozirgi kunda eng barqaror ishlaydigan vision modellar
         vision_models = [
             'llama-3.2-11b-vision-preview',
-            'llama-3.2-90b-vision-preview',
-            'qwen/qwen3.8-27b'
+            'llama-3.2-90b-vision-preview'
         ]
         
         answer = None
@@ -89,7 +87,7 @@ async def handle_photo(message: types.Message):
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's caption or request and reply concisely in that exact same language, describing or answering about the image. Include friendly emojis."
+                            "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely in that exact same language with friendly emojis."
                         },
                         {
                             "role": "user",
@@ -143,7 +141,7 @@ async def chat_with_ai(message: types.Message):
     if user_id not in user_histories:
         user_histories[user_id] = []
 
-    waiting_msg = await message.answer("⏳ O'ylayapman... / Думаю... / Thinking...")
+    waiting_msg = await message.answer("⏳ O'ylayapman... / Thinking...")
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -157,7 +155,7 @@ async def chat_with_ai(message: types.Message):
     
     system_prompt = {
         "role": "system", 
-        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely in that exact same language with friendly emojis."
+        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely in that exact same language with friendly emojis."
     }
 
     user_histories[user_id].append({"role": "user", "content": user_text})
@@ -192,7 +190,7 @@ async def chat_with_ai(message: types.Message):
     except:
         pass
         
-    fanswer = answer if answer else f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>"
+    fanswer = answer if answer else f"⚠️ Xatolik / Error:\n<code>{last_error}</code>"
     if not answer and len(user_histories[user_id]) > 0:
         user_histories[user_id].pop()
         
