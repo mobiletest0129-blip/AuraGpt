@@ -31,10 +31,9 @@ def run_server():
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
-# --- BOT VA API SOZLAMALARI ---
+# --- BOT VA GROQ API SOZLAMALARI ---
 TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
 GROQ_API_KEY = "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"
-GEMINI_API_KEY = "AQ.Ab8RN6I5FR90WoHTS0nBvnlN9lBuq9uWPguk8mFyYqIdK4stxw"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
@@ -51,7 +50,7 @@ async def start_cmd(message: types.Message):
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLARNI GEMINI VISION MODELLARI ORQALI TAHLIL QILISH ---
+# --- RASMLARNI GROQ VISION MODELLARI ORQALI TAHLIL QILISH ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
     user_text = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tushuntirib bering."
@@ -63,38 +62,49 @@ async def handle_photo(message: types.Message):
         downloaded_file = await bot.download_file(file_info.file_path)
         base64_image = base64.b64encode(downloaded_file.read()).decode('utf-8')
         
-        # Tasdiqlangan va ishlaydigan Gemini vision modellari
-        gemini_vision_models = [
-            "gemini-3.8-flash"
-            "gemini-1.5-pro"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        vision_models = [
+            'llama-3.2-11b-vision-preview',
+            'llama-3.2-90b-vision-preview'
         ]
         
         answer = None
         last_error = ""
 
         async with aiohttp.ClientSession() as session:
-            for model in gemini_vision_models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            for model_name in vision_models:
                 payload = {
-                    "contents": [
+                    "model": model_name,
+                    "messages": [
                         {
-                            "parts": [
-                                {"text": f"You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language and reply concisely with emojis. User prompt: {user_text}"},
+                            "role": "system",
+                            "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely with friendly emojis."
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": user_text},
                                 {
-                                    "inline_data": {
-                                        "mime_type": "image/jpeg",
-                                        "data": base64_image
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
                                     }
                                 }
                             ]
                         }
-                    ]
+                    ],
+                    "max_tokens": 1024
                 }
+                
                 try:
-                    async with session.post(url, json=payload, timeout=25) as response:
+                    async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=25) as response:
                         res_json = await response.json()
-                        if "candidates" in res_json:
-                            answer = res_json["candidates"][0]["content"]["parts"][0]["text"]
+                        if "choices" in res_json:
+                            answer = res_json["choices"][0]["message"]["content"]
                             break
                         else:
                             last_error = res_json.get("error", {}).get("message", str(res_json))
@@ -117,7 +127,7 @@ async def handle_photo(message: types.Message):
             pass
         await message.answer(f"⚠️ Xatolik yuz berdi: {str(e)}")
 
-# --- MATNLI XABARLAR (AVVAL GROQ, AGAR ISHLAMASA GEMINI ORQALI) ---
+# --- MATNLI XABARLAR UCHUN (10 TA MODEL NAVBATI) ---
 @dp.message(F.text)
 async def chat_with_ai(message: types.Message):
     user_text = message.text
@@ -128,83 +138,56 @@ async def chat_with_ai(message: types.Message):
 
     waiting_msg = await message.answer("⏳ O'ylayapman... / Думаю... / Thinking...")
 
-    system_prompt_text = "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details, such as their name or facts they shared earlier. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language with friendly emojis (like 😊, ✨, 🚀, 🤖)."
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    models = [
+        'llama-3.3-70b-versatile',
+        'llama-3.3-70b-specdec',
+        'llama-3.1-70b-versatile',
+        'llama3-70b-8192',
+        'llama3-8b-8192',
+        'mixtral-8x7b-32768',
+        'gemma2-9b-it',
+        'gemma-7b-it',
+        'llama-guard-3-8b',
+        'llama-3.1-8b-instant'
+    ]
+    
+    system_prompt = {
+        "role": "system", 
+        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details, such as their name or facts they shared earlier. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language with friendly emojis (like 😊, ✨, 🚀, 🤖)."
+    }
 
     user_histories[user_id].append({"role": "user", "content": user_text})
     recent_history = user_histories[user_id][-10:]
+    messages_payload = [system_prompt] + recent_history
 
     answer = None
     last_error = ""
-
+    
     async with aiohttp.ClientSession() as session:
-        # 1-BOSQICH: Groq modellarini sinab ko'rish
-        groq_models = [
-            'llama-3.3-70b-versatile',
-            'llama-3.3-70b-specdec',
-            'llama-3.1-70b-versatile',
-            'llama3-70b-8192',
-            'llama3-8b-8192',
-            'mixtral-8x7b-32768',
-            'gemma2-9b-it',
-            'gemma-7b-it',
-            'llama-guard-3-8b'
-        ]
-        
-        groq_headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        messages_payload = [{"role": "system", "content": system_prompt_text}] + recent_history
-
-        for model_name in groq_models:
+        for model_name in models:
             data = {
                 "model": model_name,
                 "messages": messages_payload,
                 "max_tokens": 1024
             }
             try:
-                async with session.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=groq_headers, timeout=12) as response:
+                async with session.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=15) as response:
                     res_json = await response.json()
                     if "choices" in res_json:
                         answer = res_json["choices"][0]["message"]["content"]
+                        user_histories[user_id].append({"role": "assistant", "content": answer})
                         break
                     else:
                         last_error = res_json.get("error", {}).get("message", str(res_json))
             except Exception as e:
                 last_error = str(e)
                 continue
-
-        # 2-BOSQICH: Agar Groq modellarining hammasi ishlamasa, Gemini ga murojaat qilish
-        if not answer:
-            gemini_chat_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
             
-            gemini_contents = []
-            gemini_contents.append({"role": "user", "parts": [{"text": system_prompt_text}]})
-            
-            for msg in recent_history:
-                g_role = "user" if msg["role"] == "user" else "model"
-                gemini_contents.append({"role": g_role, "parts": [{"text": msg["content"]}]})
-
-            for g_model in gemini_chat_models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={GEMINI_API_KEY}"
-                payload = {"contents": gemini_contents}
-                
-                try:
-                    async with session.post(url, json=payload, timeout=15) as response:
-                        res_json = await response.json()
-                        if "candidates" in res_json:
-                            answer = res_json["candidates"][0]["content"]["parts"][0]["text"]
-                            break
-                        else:
-                            last_error = res_json.get("error", {}).get("message", str(res_json))
-                except Exception as e:
-                    last_error = str(e)
-                    continue
-
-    if answer:
-        user_histories[user_id].append({"role": "assistant", "content": answer})
-    
     try:
         await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
     except:
