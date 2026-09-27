@@ -6,7 +6,6 @@ import threading
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 import aiohttp
-import base64
 
 # --- RENDER UCHUN ODDIY VA ISHONCHLI WEB-SERVER ---
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -39,98 +38,21 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-greeted_users = set()
 user_histories = {}
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
     try:
         user_id = message.from_user.id
-        greeted_users.add(user_id)
         user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Matn va rasmlarni tahlil qilishga tayyorman! ✨")
+        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Savollaringizni yuborishingiz mumkin! ✨")
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLARNI QABUL QILIB TAHLIL QILISH ---
+# --- RASMLAR UCHUN XABARDOR QILISH (XATOLIK BERMASligi uchun) ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
-    user_id = message.from_user.id
-    caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tushuntirib bering."
-    
-    waiting_msg = await message.answer("🖼 Rasm tahlil qilinmoqda... / Analysing image...")
-
-    try:
-        photo = message.photo[-1]
-        file_info = await bot.get_file(photo.file_id)
-        downloaded_file = await bot.download_file(file_info.file_path)
-        base64_image = base64.b64encode(downloaded_file.read()).decode('utf-8')
-        
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        # Hozirgi kunda eng barqaror ishlaydigan vision modellar
-        vision_models = [
-            'llama-3.2-11b-vision-preview',
-            'llama-3.2-90b-vision-preview'
-        ]
-        
-        answer = None
-        last_error = ""
-
-        async with aiohttp.ClientSession() as session:
-            for model_name in vision_models:
-                payload = {
-                    "model": model_name,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely in that exact same language with friendly emojis."
-                        },
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": caption},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    "max_tokens": 1024
-                }
-                
-                try:
-                    async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=25) as response:
-                        res_json = await response.json()
-                        if "choices" in res_json:
-                            answer = res_json["choices"][0]["message"]["content"]
-                            break
-                        else:
-                            last_error = res_json.get("error", {}).get("message", str(res_json))
-                except Exception as e:
-                    last_error = str(e)
-                    continue
-
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
-        except:
-            pass
-            
-        fanswer = answer if answer else f"⚠️ Rasm tahlil qilishda xatolik:\n<code>{last_error}</code>"
-        await message.answer(fanswer, parse_mode="HTML" if not answer else None)
-        
-    except Exception as e:
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
-        except:
-            pass
-        await message.answer(f"⚠️ Xatolik yuz berdi: {str(e)}")
+    await message.answer("📸 Rasm qabul qilindi! Hozirgi vaqtda faqat matnli xabarlar va savollar bilan ishlayapmiz, iltimos savollaringizni matn ko'rinishida yuboring. 😊\n\n📸 Фото получено! Пожалуйста, отправляйте вопросы в текстовом виде. 😊")
 
 # --- ODDIY MATNLI XABARLAR UCHUN ---
 @dp.message(F.text)
@@ -141,7 +63,7 @@ async def chat_with_ai(message: types.Message):
     if user_id not in user_histories:
         user_histories[user_id] = []
 
-    waiting_msg = await message.answer("⏳ O'ylayapman... / Thinking...")
+    waiting_msg = await message.answer("⏳ O'ylayapman... / Думаю... / Thinking...")
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -155,7 +77,7 @@ async def chat_with_ai(message: types.Message):
     
     system_prompt = {
         "role": "system", 
-        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely in that exact same language with friendly emojis."
+        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details, such as their name or facts they shared earlier. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language with friendly emojis (like 😊, ✨, 🚀, 🤖)."
     }
 
     user_histories[user_id].append({"role": "user", "content": user_text})
@@ -190,7 +112,7 @@ async def chat_with_ai(message: types.Message):
     except:
         pass
         
-    fanswer = answer if answer else f"⚠️ Xatolik / Error:\n<code>{last_error}</code>"
+    fanswer = answer if answer else f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>"
     if not answer and len(user_histories[user_id]) > 0:
         user_histories[user_id].pop()
         
