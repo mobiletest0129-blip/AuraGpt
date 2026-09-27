@@ -65,7 +65,7 @@ async def handle_photo(message: types.Message):
         
         # Tasdiqlangan va ishlaydigan Gemini vision modellari
         gemini_vision_models = [
-            "gemini-1.5-flash",
+            "gemini-3.8-flash"
             "gemini-1.5-pro"
         ]
         
