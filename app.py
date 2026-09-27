@@ -33,7 +33,7 @@ server_thread.start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
 TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
-GROQ_API_8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIUKEY = "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"
+GROQ_API_KEY = "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"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
@@ -52,42 +52,31 @@ async def start_cmd(message: types.Message):
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLARNI QABUL QILIB 5 TA MODEL ORQALI NAVBATMA-NAVBAT TAHLIL QILISH ---
+# --- RASMLARNI QABUL QILIB TAHLIL QILISH (VISION FALLBACK) ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
     user_id = message.from_user.id
+    caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tushuntirib bering."
     
-    welcome_prefix = ""
-    if user_id not in greeted_users:
-        greeted_users.add(user_id)
-        welcome_prefix = "Assalomu alaykum! 😊 / Hello! 👋\n\n"
-
-    caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tasvirlab bering."
-    
-    waiting_msg = await message.answer("🔍 Rasm tahlil qilinmoqda... / Анализирую изображение... / Analyzing image...")
+    waiting_msg = await message.answer("🖼 Rasm tahlil qilinmoqda... / Анализирую изображение... / Analyzing image...")
 
     try:
         # Rasmni yuklab olib base64 formatga o'tkazamiz
         photo = message.photo[-1]
         file_info = await bot.get_file(photo.file_id)
-        file_path = file_info.file_path
-        
-        downloaded_file = await bot.download_file(file_path)
-        image_bytes = downloaded_file.read()
-        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+        downloaded_file = await bot.download_file(file_info.file_path)
+        base64_image = base64.b64encode(downloaded_file.read()).decode('utf-8')
         
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json"
         }
         
-        # Rasm qabul qiluvchi 5 ta model ro'yxati (navbatma-navbat sinab ko'radi)
+        # Vision modellari ro'yxati (navbatma-navbat tekshiradi)
         vision_models = [
-            'qwen/qwen3.8-27b',
-            'meta-llama/llama-4-scout-17b-16e-instruct',
-            'meta-llama/llama-4-maverick-17b-128e-instruct',
             'llama-3.2-11b-vision-preview',
-            'llama-3.2-90b-vision-preview'
+            'llama-3.2-90b-vision-preview',
+            'qwen/qwen3.8-27b'
         ]
         
         answer = None
@@ -100,7 +89,7 @@ async def handle_photo(message: types.Message):
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's caption or request (Uzbek, Russian, or English) and reply concisely in that exact same language, describing or answering about the image. Include friendly emojis."
+                            "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's caption or request and reply concisely in that exact same language, describing or answering about the image. Include friendly emojis."
                         },
                         {
                             "role": "user",
@@ -136,7 +125,7 @@ async def handle_photo(message: types.Message):
             pass
             
         fanswer = answer if answer else f"⚠️ Rasm tahlil qilishda xatolik:\n<code>{last_error}</code>"
-        await message.answer(welcome_prefix + fanswer, parse_mode="HTML" if not answer else None)
+        await message.answer(fanswer, parse_mode="HTML" if not answer else None)
         
     except Exception as e:
         try:
@@ -151,11 +140,6 @@ async def chat_with_ai(message: types.Message):
     user_text = message.text
     user_id = message.from_user.id
     
-    welcome_prefix = ""
-    if user_id not in greeted_users:
-        greeted_users.add(user_id)
-        welcome_prefix = "Assalomu alaykum! 😊 / Hello! 👋\n\n"
-
     if user_id not in user_histories:
         user_histories[user_id] = []
 
@@ -168,13 +152,12 @@ async def chat_with_ai(message: types.Message):
     
     models = [
         'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'openai/gpt-oss-120b'
+        'llama-3.1-8b-instant'
     ]
     
     system_prompt = {
         "role": "system", 
-        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details, such as their name, preferences, or facts they shared earlier. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language. Always include friendly emojis (like 😊, ✨, 🚀, 🤖) in your responses."
+        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely in that exact same language with friendly emojis."
     }
 
     user_histories[user_id].append({"role": "user", "content": user_text})
@@ -213,7 +196,7 @@ async def chat_with_ai(message: types.Message):
     if not answer and len(user_histories[user_id]) > 0:
         user_histories[user_id].pop()
         
-    await message.answer(welcome_prefix + fanswer, parse_mode="HTML" if not answer else None)
+    await message.answer(fanswer, parse_mode="HTML" if not answer else None)
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
