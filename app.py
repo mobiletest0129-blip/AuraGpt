@@ -47,87 +47,14 @@ async def start_cmd(message: types.Message):
         user_id = message.from_user.id
         greeted_users.add(user_id)
         user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Xotiram va rasm tahlil qilish qobiliyatim ishlayapti, savollaringizga tayyorman! ✨")
+        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Savollaringizga javob berishga tayyorman! ✨")
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLARNI QABUL QILIB TAHLIL QILISH (VISION MODEL) ---
+# --- RASMLAR UCHUN XAVFSIZ JAVOB ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
-    user_id = message.from_user.id
-    
-    welcome_prefix = ""
-    if user_id not in greeted_users:
-        greeted_users.add(user_id)
-        welcome_prefix = "Assalomu alaykum! 😊 / Hello! 👋\n\n"
-
-    # Eng sifatli rasmni olamiz
-    photo = message.photo[-1]
-    file_info = await bot.get_file(photo.file_id)
-    file_path = file_info.file_path
-    
-    # Telegram serveridan rasmga to'g'ridan-to'g'ri havola
-    image_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
-    
-    user_caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tushuntirib bering."
-
-    waiting_msg = await message.answer("🖼 Rasm tahlil qilinmoqda... / Анализирую изображение... / Analyzing image...")
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    # Vision-ni qo'llab-quvvatlovchi zamonaviy model
-    vision_model = 'qwen/qwen3.8-27b'
-    
-    payload = {
-        "model": vision_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's caption or request (Uzbek, Russian, or English) and reply concisely in that exact same language, describing or answering about the image. Include friendly emojis."
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": user_caption
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": image_url
-                        }
-                    }
-                ]
-            }
-        ],
-        "max_tokens": 1024
-    }
-
-    answer = None
-    last_error = ""
-
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=30) as response:
-                res_json = await response.json()
-                if "choices" in res_json:
-                    answer = res_json["choices"][0]["message"]["content"]
-                else:
-                    last_error = res_json.get("error", {}).get("message", str(res_json))
-        except Exception as e:
-            last_error = str(e)
-
-    try:
-        await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
-    except:
-        pass
-        
-    fanswer = answer if answer else f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>"
-    await message.answer(welcome_prefix + fanswer, parse_mode="HTML" if not answer else None)
+    await message.answer("📸 Rasm qabul qilindi! Hozirgi vaqtda tezkor matnli serverda ishlayotganimiz sababli, savollaringizni matn ko'rinishida yuborishingizni so'rayman. 😊\n\n📸 Фото получено! Пожалуйста, отправляйте вопросы в текстовом виде. 😊")
 
 # --- ODDIY MATNLI XABARLAR UCHUN ---
 @dp.message(F.text)
@@ -152,8 +79,7 @@ async def chat_with_ai(message: types.Message):
     
     models = [
         'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'openai/gpt-oss-120b'
+        'llama-3.1-8b-instant'
     ]
     
     system_prompt = {
