@@ -32,7 +32,7 @@ server_thread.start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
 TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "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" # <-- Yangi kalitni shu yerga yozing
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
@@ -49,7 +49,7 @@ async def start_cmd(message: types.Message):
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLAR UCHUN XABARDOR QILISH (XATOLIK BERMASligi uchun) ---
+# --- RASMLAR UCHUN XABARDOR QILISH ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
     await message.answer("📸 Rasm qabul qilindi! Hozirgi vaqtda faqat matnli xabarlar va savollar bilan ishlayapmiz, iltimos savollaringizni matn ko'rinishida yuboring. 😊\n\n📸 Фото получено! Пожалуйста, отправляйте вопросы в текстовом виде. 😊")
@@ -70,6 +70,7 @@ async def chat_with_ai(message: types.Message):
         "Content-Type": "application/json"
     }
     
+    # Ishonchli va eng so'nggi matnli modellar ro'yxati
     models = [
         'llama-3.3-70b-versatile',
         'llama-3.1-8b-instant'
