@@ -32,7 +32,7 @@ server_thread.start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
 TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
-GROQ_API_KEY = "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" # <-- Yangi kalitni shu yerga yozing
+GROQ_API_KEY = "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"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
@@ -54,7 +54,7 @@ async def start_cmd(message: types.Message):
 async def handle_photo(message: types.Message):
     await message.answer("📸 Rasm qabul qilindi! Hozirgi vaqtda faqat matnli xabarlar va savollar bilan ishlayapmiz, iltimos savollaringizni matn ko'rinishida yuboring. 😊\n\n📸 Фото получено! Пожалуйста, отправляйте вопросы в текстовом виде. 😊")
 
-# --- ODDIY MATNLI XABARLAR UCHUN ---
+# --- ODDIY MATNLI XABARLAR UCHUN (10 TA MODEL NAVBATI) ---
 @dp.message(F.text)
 async def chat_with_ai(message: types.Message):
     user_text = message.text
@@ -70,9 +70,17 @@ async def chat_with_ai(message: types.Message):
         "Content-Type": "application/json"
     }
     
-    # Ishonchli va eng so'nggi matnli modellar ro'yxati
+    # 10 ta turli xil modellar ro'yxati (biri ishlamasa, keyingisi tekshiriladi)
     models = [
         'llama-3.3-70b-versatile',
+        'llama-3.3-70b-specdec',
+        'llama-3.1-70b-versatile',
+        'llama3-70b-8192',
+        'llama3-8b-8192',
+        'mixtral-8x7b-32768',
+        'gemma2-9b-it',
+        'gemma-7b-it',
+        'llama-guard-3-8b',
         'llama-3.1-8b-instant'
     ]
     
@@ -96,7 +104,7 @@ async def chat_with_ai(message: types.Message):
                 "max_tokens": 1024
             }
             try:
-                async with session.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=20) as response:
+                async with session.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=15) as response:
                     res_json = await response.json()
                     if "choices" in res_json:
                         answer = res_json["choices"][0]["message"]["content"]
