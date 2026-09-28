@@ -31,7 +31,7 @@ server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
-TOKEN = "8830513411:"8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
+TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
 GROQ_API_KEY = "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"
 
 logging.basicConfig(level=logging.INFO)
