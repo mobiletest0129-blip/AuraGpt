@@ -30,12 +30,16 @@ def run_server():
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
-# --- BOT VA GROQ API SOZLAMALARI ---
-TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
-GROQ_API_KEY = "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"
+# --- XAVFSIZ TOKEN VA API KALITLAR ---
+# Endi ular koddan o'qilmaydi, balki Render/Environment sozlamalaridan olinadi
+TOKEN = os.getenv("BOT_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not TOKEN or not GROQ_API_KEY:
+    logging.error("DIQQAT: BOT_TOKEN yoki GROQ_API_KEY topilmadi! Ularni muhit o'zgaruvchilariga kiriting.")
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=TOKEN)
+bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 
 user_histories = {}
@@ -82,7 +86,6 @@ async def chat_with_ai(message: types.Message):
         'gemma2-9b-it'
     ]
     
-    # 200+ tilda muloqot qilishni ta'minlovchi universal tizim ko'rsatmasi
     system_prompt = {
         "role": "system", 
         "content": (
@@ -133,6 +136,9 @@ async def chat_with_ai(message: types.Message):
     await message.answer(fanswer, parse_mode="HTML" if not answer else None)
 
 async def main():
+    if not bot:
+        logging.error("Bot obyekti yaratilmadi, TOKEN mavjud emas!")
+        return
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
