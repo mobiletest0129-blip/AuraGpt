@@ -6,7 +6,6 @@ import threading
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 import aiohttp
-import base64
 
 # --- RENDER UCHUN ODDIY VA ISHONCHLI WEB-SERVER ---
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -46,86 +45,14 @@ async def start_cmd(message: types.Message):
     try:
         user_id = message.from_user.id
         user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Matn va rasmlarni tahlil qilishga tayyorman! ✨")
+        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Hozirgi vaqtda faqat matnli xabarlar va savollar bilan ishlaymiz. Iltimos, savollaringizni matn ko'rinishida yuboring! ✨")
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLARNI GROQ VISION MODELLARI ORQALI TAHLIL QILISH ---
+# --- RASMLAR KELGANDA XATOSIZ OGOHLANTirish ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
-    user_text = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, tushuntirib bering."
-    waiting_msg = await message.answer("🖼 Rasm tahlil qilinmoqda... / Analysing image...")
-
-    try:
-        photo = message.photo[-1]
-        file_info = await bot.get_file(photo.file_id)
-        downloaded_file = await bot.download_file(file_info.file_path)
-        base64_image = base64.b64encode(downloaded_file.read()).decode('utf-8')
-        
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        vision_models = [
-            'llama-3.2-11b-vision-preview',
-            'llama-3.2-90b-vision-preview'
-        ]
-        
-        answer = None
-        last_error = ""
-
-        async with aiohttp.ClientSession() as session:
-            for model_name in vision_models:
-                payload = {
-                    "model": model_name,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. Detect the language of the user's message and reply concisely with friendly emojis."
-                        },
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": user_text},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    "max_tokens": 1024
-                }
-                
-                try:
-                    async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=25) as response:
-                        res_json = await response.json()
-                        if "choices" in res_json:
-                            answer = res_json["choices"][0]["message"]["content"]
-                            break
-                        else:
-                            last_error = res_json.get("error", {}).get("message", str(res_json))
-                except Exception as e:
-                    last_error = str(e)
-                    continue
-
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
-        except:
-            pass
-            
-        fanswer = answer if answer else f"⚠️ Rasm tahlil qilishda xatolik:\n<code>{last_error}</code>"
-        await message.answer(fanswer, parse_mode="HTML" if not answer else None)
-        
-    except Exception as e:
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
-        except:
-            pass
-        await message.answer(f"⚠️ Xatolik yuz berdi: {str(e)}")
+    await message.answer("📸 Rasm qabul qilindi! Hozirgi vaqtda faqat matnli xabarlar va savollar bilan ishlayapmiz, iltimos savollaringizni matn ko'rinishida yuboring. 😊")
 
 # --- MATNLI XABARLAR UCHUN (10 TA MODEL NAVBATI) ---
 @dp.message(F.text)
