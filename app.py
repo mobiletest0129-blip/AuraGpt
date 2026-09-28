@@ -45,7 +45,7 @@ async def start_cmd(message: types.Message):
     try:
         user_id = message.from_user.id
         user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊\nMen AURAgpt botiman. 🤖 Savollaringizni matn ko'rinishida yuboring! ✨")
+        await message.answer("Assalomu alaykum! 😊\nMen AURAgpt botiman. 🤖 Dunyoning 200+ tilida muloqot qila olaman va savollaringizga javob berishga tayyorman! ✨")
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
@@ -70,7 +70,6 @@ async def chat_with_ai(message: types.Message):
         "Content-Type": "application/json"
     }
     
-    # Siz so'ragan modellar birinchi navbatda tekshiriladi
     models = [
         'llama-3.3-70b-versatile',
         'llama-3.1-8b-instant',
@@ -83,9 +82,16 @@ async def chat_with_ai(message: types.Message):
         'gemma2-9b-it'
     ]
     
+    # 200+ tilda muloqot qilishni ta'minlovchi universal tizim ko'rsatmasi
     system_prompt = {
         "role": "system", 
-        "content": "You are AURAgpt, an AI assistant created by Bunyodbek Zokirov. ALWAYS pay close attention to the previous chat history to remember user details, such as their name or facts they shared earlier. If anyone asks who created you, answer proudly that you were created by Bunyodbek Zokirov. Detect the language of the user's message (Uzbek, Russian, or English) and reply concisely in that exact same language with friendly emojis (like 😊, ✨, 🚀, 🤖)."
+        "content": (
+            "You are AURAgpt, a highly advanced multilingual AI assistant created by Bunyodbek Zokirov. "
+            "You are capable of understanding and fluent in over 200 languages worldwide. "
+            "ALWAYS detect the language of the user's message accurately and reply fluently in that exact same language. "
+            "If anyone asks who created you, proudly state that you were created by Bunyodbek Zokirov. "
+            "Always pay close attention to the previous chat history to remember user details, and use friendly emojis (like 😊, ✨, 🚀, 🤖)."
+        )
     }
 
     user_histories[user_id].append({"role": "user", "content": user_text})
