@@ -31,7 +31,7 @@ server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
 # --- BOT VA GROQ API SOZLAMALARI ---
-TOKEN = "8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
+TOKEN = "8830513411:"8830513411:AAHuDd6_AWoaXdwTAKRge7CLPYbONCUrhIU"
 GROQ_API_KEY = "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"
 
 logging.basicConfig(level=logging.INFO)
@@ -45,16 +45,16 @@ async def start_cmd(message: types.Message):
     try:
         user_id = message.from_user.id
         user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊 / Здравствуйте! / Hello!\nMen AURAgpt botiman. 🤖 Hozirgi vaqtda faqat matnli xabarlar va savollar bilan ishlaymiz. Iltimos, savollaringizni matn ko'rinishida yuboring! ✨")
+        await message.answer("Assalomu alaykum! 😊\nMen AURAgpt botiman. 🤖 Savollaringizni matn ko'rinishida yuboring! ✨")
     except Exception as e:
         logging.error(f"Start xatosi: {e}")
 
-# --- RASMLAR KELGANDA XATOSIZ OGOHLANTirish ---
+# --- RASMLAR KELGANDA OGOHLANTIRISH ---
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
-    await message.answer("📸 Rasm qabul qilindi! Hozirgi vaqtda faqat matnli xabarlar va savollar bilan ishlayapmiz, iltimos savollaringizni matn ko'rinishida yuboring. 😊")
+    await message.answer("📸 Rasm qabul qilindi! Hozircha faqat matnli xabarlar va savollar bilan ishlayapmiz. Iltimos, savollaringizni matn ko'rinishida yuboring. 😊")
 
-# --- MATNLI XABARLAR UCHUN (10 TA MODEL NAVBATI) ---
+# --- MATNLI XABARLAR UCHUN ---
 @dp.message(F.text)
 async def chat_with_ai(message: types.Message):
     user_text = message.text
@@ -63,24 +63,24 @@ async def chat_with_ai(message: types.Message):
     if user_id not in user_histories:
         user_histories[user_id] = []
 
-    waiting_msg = await message.answer("⏳ O'ylayapman... / Думаю... / Thinking...")
+    waiting_msg = await message.answer("⏳ O'ylayapman...")
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     
+    # Siz so'ragan modellar birinchi navbatda tekshiriladi
     models = [
         'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'openai/gpt-oss-120b',
         'llama-3.3-70b-specdec',
         'llama-3.1-70b-versatile',
         'llama3-70b-8192',
         'llama3-8b-8192',
         'mixtral-8x7b-32768',
-        'gemma2-9b-it',
-        'gemma-7b-it',
-        'llama-guard-3-8b',
-        'llama-3.1-8b-instant'
+        'gemma2-9b-it'
     ]
     
     system_prompt = {
@@ -120,7 +120,7 @@ async def chat_with_ai(message: types.Message):
     except:
         pass
         
-    fanswer = answer if answer else f"⚠️ Xatolik / Ошибка / Error:\n<code>{last_error}</code>"
+    fanswer = answer if answer else f"⚠️ Xatolik yuz berdi:\n<code>{last_error}</code>"
     if not answer and len(user_histories[user_id]) > 0:
         user_histories[user_id].pop()
         
