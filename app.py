@@ -1,13 +1,17 @@
 import os
 import asyncio
 import logging
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 import aiohttp
 
-# --- RENDER UCHUN ODDIY VA ISHONCHLI WEB-SERVER ---
+# --- RENDER UCHUN WEB-SERVER ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -30,40 +34,93 @@ def run_server():
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
-# --- XAVFSIZ TOKEN VA API KALITLAR ---
-# Endi ular koddan o'qilmaydi, balki Render/Environment sozlamalaridan olinadi
+# --- TOKEN VA SOZLAMALAR ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-if not TOKEN or not GROQ_API_KEY:
-    logging.error("DIQQAT: BOT_TOKEN yoki GROQ_API_KEY topilmadi! Ularni muhit o'zgaruvchilariga kiriting.")
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 
+# Ma'lumotlar bazasi vazifasini bajaruvchi vaqtinchalik xotiralar
 user_histories = {}
+verified_users = set()  # Ro'yxatdan o'tganlar ID si
+pending_registrations = {}  # Kod kutayotganlar: {user_id: {"email": email, "code": code}}
+
+def send_email_code(to_email, code):
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = to_email
+        msg['Subject'] = "AURAgpt - Tasdiqlash kodi (Verification Code)"
+        
+        body = f"Sizning AURAgpt botida ro'yxatdan o'tish uchun tasdiqlash kodingiz:\n\n{code}\n\nKodni hech kimga bermang!"
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_USER, to_email, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        logging.error(f"Pochta yuborish xatosi: {e}")
+        return False
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    try:
-        user_id = message.from_user.id
-        user_histories[user_id] = []
-        await message.answer("Assalomu alaykum! 😊\nMen AURAgpt botiman. 🤖 Dunyoning 200+ tilida muloqot qila olaman va savollaringizga javob berishga tayyorman! ✨")
-    except Exception as e:
-        logging.error(f"Start xatosi: {e}")
-
-# --- RASMLAR KELGANDA OGOHLANTIRISH ---
-@dp.message(F.photo)
-async def handle_photo(message: types.Message):
-    await message.answer("📸 Rasm qabul qilindi! Hozircha faqat matnli xabarlar va savollar bilan ishlayapmiz. Iltimos, savollaringizni matn ko'rinishida yuboring. 😊")
-
-# --- MATNLI XABARLAR UCHUN ---
-@dp.message(F.text)
-async def chat_with_ai(message: types.Message):
-    user_text = message.text
     user_id = message.from_user.id
-    
+    if user_id in verified_users:
+        await message.answer("Assalomu alaykum! 😊 Siz allaqachon ro'yxatdan o'tgansiz. Savollaringizni yuborishingiz mumkin! 🤖")
+    else:
+        pending_registrations[user_id] = {"step": "waiting_email"}
+        await message.answer("✉️ Assalomu alaykum! AURAgpt botidan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):")
+
+@dp.message(F.text)
+async def handle_text_messages(message: types.Message):
+    user_id = message.from_user.id
+    text = message.text.strip()
+
+    # 1. Agar foydalanuvchi email kiritayotgan bo'lsa
+    if user_id in pending_registrations and pending_registrations[user_id].get("step") == "waiting_email":
+        if "@gmail.com" not in text.lower():
+            await message.answer("⚠️ Iltimos, yaroqli **Gmail** manzilini kiriting (masalan: test@gmail.com):")
+            return
+        
+        code = str(random.randint(100000, 999999))
+        pending_registrations[user_id]["email"] = text
+        pending_registrations[user_id]["code"] = code
+        pending_registrations[user_id]["step"] = "waiting_code"
+
+        sent = send_email_code(text, code)
+        if sent:
+            await message.answer(f"📩 **{text}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, pochtangizni tekshirib, kodni shu yerga yuboring:")
+        else:
+            await message.answer("⚠️ Xatolik yuz berdi. Pochtaga kod yuborib bo'lmadi. Iltimos, boshqa Gmail kiriting yoki keyinroq urinib ko'ring:")
+            pending_registrations[user_id]["step"] = "waiting_email"
+        return
+
+    # 2. Agar foydalanuvchi tasdiqlash kodini kiritayotgan bo'lsa
+    if user_id in pending_registrations and pending_registrations[user_id].get("step") == "waiting_code":
+        correct_code = pending_registrations[user_id].get("code")
+        if text == correct_code:
+            verified_users.add(user_id)
+            del pending_registrations[user_id]
+            user_histories[user_id] = []
+            await message.answer("✅ Tabriklayman! Pochtatingiz muvaffaqiyatli tasdiqlandi. Endi botdan to'liq foydalanishingiz mumkin! 🚀 Savollaringizni yuboring.")
+        else:
+            await message.answer("❌ Noto'g'ri kod! Iltimos, pochtangizga kelgan 6 xonali kodni qaytadan yuboring:")
+        return
+
+    # 3. Ro'yxatdan o'tmagan bo'lsa
+    if user_id not in verified_users:
+        await message.answer("⚠️ Botdan foydalanish uchun avval ro'yxatdan o'tishingiz kerak. Iltimos, /start buyrug'ini bosing.")
+        return
+
+    # --- AI BILAN MULOQOT QISMI (RO'YXATDAN O'TGANLAR UCHUN) ---
+    user_text = message.text
     if user_id not in user_histories:
         user_histories[user_id] = []
 
@@ -134,6 +191,14 @@ async def chat_with_ai(message: types.Message):
         user_histories[user_id].pop()
         
     await message.answer(fanswer, parse_mode="HTML" if not answer else None)
+
+@dp.message(F.photo)
+async def handle_photo(message: types.Message):
+    user_id = message.from_user.id
+    if user_id not in verified_users:
+        await message.answer("⚠️ Botdan foydalanish uchun avval /start orqali ro'yxatdan o'ting.")
+        return
+    await message.answer("📸 Rasm qabul qilindi! Hozircha faqat matnli xabarlar va savollar bilan ishlayapmiz. 😊")
 
 async def main():
     if not bot:
