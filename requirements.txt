@@ -1,4 +1,2 @@
-aiogram
-aiohttp
-requests
-
+aiogram==3.10.0
+groq
