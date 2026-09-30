@@ -19,7 +19,7 @@ app_flask = Flask('')
 
 @app_flask.route('/')
 def home():
-    return "AURAgpt Bot with Antivirus, File Reader & Custom Models is active!"
+    return "AURAgpt Bot with Antivirus, File Reader & Active Models is running!"
 
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -339,9 +339,9 @@ async def handle_document(message: types.Message):
                     text_content = text_content[:4000] + "\n...(fayl juda uzun bo'lgani uchun qisqartirildi)"
                 
                 models = [
-                    'llama-3.3-70b-versatile',
-                    'llama-3.1-8b-instant',
-                    'openai/gpt-oss-120b'
+                    "llama-3.3-70b-versatile",
+                    "llama-3.1-8b-instant",
+                    "gemma2-9b-it"
                 ]
                 
                 prompt = f"Quyidagi fayl ({file_name}) mazmunini tahlil qilib, nima haqida ekanligini tushuntirib ber:\n\n{text_content}"
@@ -373,7 +373,7 @@ async def handle_document(message: types.Message):
     except Exception as e:
         await message.answer(f"⚠️ Faylni qayta ishlashda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
 
-# --- TEXT CHAT WITH AI (USING YOUR EXACT MODELS LIST) ---
+# --- TEXT CHAT WITH AI (USING VALID 3 MODELS) ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -402,9 +402,9 @@ async def chat_with_ai(message: types.Message):
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
     models = [
-        'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'openai/gpt-oss-120b'
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "gemma2-9b-it"
     ]
 
     response_text = None
