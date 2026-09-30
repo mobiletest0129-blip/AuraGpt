@@ -50,7 +50,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await state.set_state(AuthState.authenticated)
         return
 
-    await message.answer("📧 Assalomu alaykum! AURAgpt botidan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):", parse_mode="Markdown")
+    await message.answer(
+        "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
+        "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yaratganlar! 💻✨\n\n"
+        "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
+        parse_mode="Markdown"
+    )
     await state.set_state(AuthState.waiting_for_email)
 
 # Emailni qabul qilish va Brevo HTTP API orqali kod yuborish
@@ -110,6 +115,12 @@ async def process_code(message: types.Message, state: FSMContext):
 # Groq AI bilan muloqot (3 ta model zanjiri bilan)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
+    # Agar foydalanuvchi "Sizni kim yasagan?" yoki shunga o'xshash savol bersa, to'g'ridan-to'g'ri javob beramiz
+    text_lower = message.text.lower()
+    if any(word in text_lower for word in ["kim yasagan", "kim yaratgan", "muallifin", "muallifi kim", "creator"]):
+        await message.answer("Meni mohir dasturchi **Bunyodbek Zokirov** yasaganlar! 👨‍💻✨")
+        return
+
     models = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
@@ -124,10 +135,10 @@ async def chat_with_ai(message: types.Message):
                 messages=[{"role": "user", "content": message.text}]
             )
             response_text = completion.choices[0].message.content
-            break  # Agar model muvaffaqiyatli javob bersa, sikldan chiqamiz
+            break  
         except Exception as e:
             print(f"Model {model_name} xato berdi: {str(e)}")
-            continue  # Xato bersa, ro'yxatdagi keyingi modelni sinab ko'ramiz
+            continue  
 
     if response_text:
         await message.answer(response_text)
