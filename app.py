@@ -3,6 +3,7 @@ import random
 import os
 import sqlite3
 import requests
+import time
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -18,7 +19,7 @@ app_flask = Flask('')
 
 @app_flask.route('/')
 def home():
-    return "AURAgpt Bot with Antivirus & File Reader is active!"
+    return "AURAgpt Bot with Antivirus, File Reader & 3 Models is active!"
 
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -93,8 +94,6 @@ def get_all_users():
     return rows
 
 # --- ANTIBOT & FLOOD PROTECTION ---
-import time
-
 def check_antibot(user_id: int) -> bool:
     if user_id == ADMIN_ID:
         return True
@@ -316,7 +315,6 @@ async def handle_document(message: types.Message):
     await message.answer(f"📂 **{file_name}** qabul qilindi. Antivirus tekshiruvi va fayl tahlili bajarilmoqda...", parse_mode="Markdown", reply_markup=get_chat_keyboard())
 
     try:
-        # Download file temporarily
         file = await bot.get_file(document.file_id)
         file_path = file.file_path
         downloaded_file = await bot.download_file(file_path)
@@ -344,14 +342,31 @@ async def handle_document(message: types.Message):
                 if len(text_content) > 4000:
                     text_content = text_content[:4000] + "\n...(fayl juda uzun bo'lgani uchun qisqartirildi)"
                 
-                # Ask AI to analyze the file content
-                prompt = f"Quyidagi fayl ({file_name}) mazmunini tahlil qilib, nima haqida ekanligini tushuntirib ber:\n\n{text_content}"
+                # Using 3 models fallback mechanism for file content analysis too
+                models = [
+                    "llama-3.3-70b-versatile",
+                    "llama-3.1-8b-instant",
+                    "mixtral-8x7b-32768"
+                ]
                 
-                completion = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                file_content_summary = f"\n\n📖 **Fayl mazmuni tahlili (AI):**\n{completion.choices[0].message.content}"
+                prompt = f"Quyidagi fayl ({file_name}) mazmunini tahlil qilib, nima haqida ekanligini tushuntirib ber:\n\n{text_content}"
+                ai_analysis = None
+                
+                for model_name in models:
+                    try:
+                        completion = groq_client.chat.completions.create(
+                            model=model_name,
+                            messages=[{"role": "user", "content": prompt}]
+                        )
+                        ai_analysis = completion.choices[0].message.content
+                        break
+                    except Exception:
+                        continue
+                
+                if ai_analysis:
+                    file_content_summary = f"\n\n📖 **Fayl mazmuni tahlili (AI):**\n{ai_analysis}"
+                else:
+                    file_content_summary = "\n\n⚠️ Faylni AI yordamida tahlil qilishda barcha modellar xatolik berdi."
             except Exception as ex:
                 file_content_summary = f"\n\n⚠️ Fayl matnini o'qishda xatolik: {str(ex)}"
         else:
@@ -363,7 +378,7 @@ async def handle_document(message: types.Message):
     except Exception as e:
         await message.answer(f"⚠️ Faylni qayta ishlashda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
 
-# --- TEXT CHAT WITH AI ---
+# --- TEXT CHAT WITH AI (USING 3 MODELS FALLBACK) ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -391,9 +406,11 @@ async def chat_with_ai(message: types.Message):
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
+    # 3 ta sun'iy intellekt modeli (ketma-ketlikda ishlaydi: biri ishlamasa keyingisiga o'tadi)
     models = [
         "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant"
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768"
     ]
 
     response_text = None
