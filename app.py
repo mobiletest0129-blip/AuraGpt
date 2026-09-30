@@ -65,7 +65,7 @@ async def process_email(message: types.Message, state: FSMContext):
     code = str(random.randint(100000, 999999))
     verification_codes[message.from_user.id] = code
 
-    # Brevo HTTP API orqali xat yuborish (Render'da bloklanmaydi)
+    # Brevo HTTP API orqali xat yuborish
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {
         "accept": "application/json",
@@ -81,13 +81,15 @@ async def process_email(message: types.Message, state: FSMContext):
 
     try:
         response = requests.post(url, json=payload, headers=headers)
+        print(f"Brevo Status Code: {response.status_code}")
+        print(f"Brevo Response: {response.text}")
+        
         if response.status_code in [200, 201, 202]:
             await state.update_data(email=email)
             await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
             await state.set_state(AuthState.waiting_for_code)
         else:
-            print(f"Brevo API Error: {response.text}")
-            await message.answer("⚠ Xat yuborishda xatolik yuz berdi. Iltimos, keyinroq urinib ko'ring.")
+            await message.answer(f"⚠ Xatolik (Brevo): {response.text}")
     except Exception as e:
         print(f"Network Error: {str(e)}")
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
@@ -119,7 +121,7 @@ async def chat_with_ai(message: types.Message):
         await message.answer(f"⚠ Sun'iy intellektga ulanishda xatolik yuz berdi: {str(e)}")
 
 async def main():
-    # Flask serverni alohida oqimda (thread) ishga tushiramiz
+    # Flask serverni alohida oqimda ishga tushiramiz
     Thread(target=run_flask).start()
     
     print("Bot ishga tushdi...")
