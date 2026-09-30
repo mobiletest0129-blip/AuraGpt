@@ -59,7 +59,7 @@ async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
     
     if not email.endswith("@gmail.com"):
-        await message.answer("⚠️️ Iltimos, haqiqiy Gmail manzilini kiriting (masalan: `ismingiz@gmail.com`):")
+        await message.answer("⚠️ Iltimos, haqiqiy Gmail manzilini kiriting (masalan: `ismingiz@gmail.com`):")
         return
 
     code = str(random.randint(100000, 999999))
@@ -107,18 +107,32 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Groq AI bilan muloqot (Yangilangan model)
+# Groq AI bilan muloqot (3 ta model zanjiri bilan)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
-    try:
-        completion = groq_client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
-            messages=[{"role": "user", "content": message.text}]
-        )
-        response_text = completion.choices[0].message.content
+    models = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "openai/gpt-oss-120b"
+    ]
+    
+    response_text = None
+    for model_name in models:
+        try:
+            completion = groq_client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": message.text}]
+            )
+            response_text = completion.choices[0].message.content
+            break  # Agar model muvaffaqiyatli javob bersa, sikldan chiqamiz
+        except Exception as e:
+            print(f"Model {model_name} xato berdi: {str(e)}")
+            continue  # Xato bersa, ro'yxatdagi keyingi modelni sinab ko'ramiz
+
+    if response_text:
         await message.answer(response_text)
-    except Exception as e:
-        await message.answer(f"⚠ Sun'iy intellektga ulanishda xatolik yuz berdi: {str(e)}")
+    else:
+        await message.answer("⚠ Hozirda sun'iy intellekt modellariga ulanishda xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.")
 
 async def main():
     # Flask serverni alohida oqimda ishga tushiramiz
