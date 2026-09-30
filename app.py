@@ -86,8 +86,9 @@ async def process_email(message: types.Message, state: FSMContext):
         await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
         await state.set_state(AuthState.waiting_for_code)
     except Exception as e:
-        print(f"SMTP Error: {str(e)}")
-        await message.answer("⚠ Xatolik yuz berdi. Pochtaga kod yuborib bo'lmadi. Parolni yoki sozlamalarni tekshiring.")
+        # Aniq xatolikni Render loglariga to'liq va tushunarli qilib chiqaramiz
+        print(f"DIQQAT SMTP XATOLIGI: {repr(e)}")
+        await message.answer(f"⚠ Xatolik yuz berdi: {str(e)}")
 
 # Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
