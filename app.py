@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+from aiogram.types import FSInputFile
 from groq import Groq
 from flask import Flask
 from threading import Thread
@@ -26,8 +27,11 @@ def run_flask():
 # Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")       # Sizning Gmail pochtangiz
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")    # Brevo API kaliti
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
+
+# Sizning Telegram ID ingiz
+ADMIN_ID = 8784874191  
 
 # Bot va Groq sozlamalari
 bot = Bot(token=TOKEN)
@@ -38,10 +42,10 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 def init_db():
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    # Tasdiqlangan foydalanuvchilar jadvali
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS verified_users (
-            user_id INTEGER PRIMARY KEY
+            user_id INTEGER PRIMARY KEY,
+            email TEXT
         )
     ''')
     conn.commit()
@@ -57,10 +61,10 @@ def is_user_verified(user_id: int) -> bool:
     conn.close()
     return row is not None
 
-def add_verified_user(user_id: int):
+def add_verified_user(user_id: int, email: str):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    cursor.execute('INSERT OR IGNORE INTO verified_users (user_id) VALUES (?)', (user_id,))
+    cursor.execute('INSERT OR REPLACE INTO verified_users (user_id, email) VALUES (?, ?)', (user_id, email))
     conn.commit()
     conn.close()
 
@@ -77,10 +81,9 @@ class AuthState(StatesGroup):
     waiting_for_code = State()
     authenticated = State()
 
-verification_codes = {}      # Tasdiqlash kodlari vaqtincha xotirada
-user_histories = {}          # Chat tarixi xotirasi
+verification_codes = {}      
+user_histories = {}          
 
-# Chiqish tugmasi uchun klaviatura yaratish funksiyasi
 def get_chat_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.button(text="🚪 Chiqish")
@@ -109,7 +112,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# Emailni qabul qilish va Brevo HTTP API orqali kod yuborish
+# Qo'shimcha /db buyrug'i (hali ham qo'lda tekshirish uchun qoladi)
+@dp.message(Command("db"))
+async def send_database_file(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    if os.path.exists('bot_database.db'):
+        db_file = FSInputFile('bot_database.db')
+        await message.answer_document(db_file, caption="📂 Joriy baza fayli:")
+
+# Emailni qabul qilish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -145,25 +158,42 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
-# Kodni tekshirish
+# Kodni tekshirish va ADMIN ga JONLI baza yuborish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
     real_code = verification_codes.get(message.from_user.id)
 
     if user_code == real_code:
-        add_verified_user(message.from_user.id)
+        data = await state.get_data()
+        email = data.get("email")
+        user_id = message.from_user.id
         
-        # Chat tarixini boshlash
-        user_histories[message.from_user.id] = [
+        add_verified_user(user_id, email)
+        
+        # --- JONLI XABAR VA BAZANI ADMINGA AVTOMATIK YUBORISH ---
+        try:
+            if os.path.exists('bot_database.db'):
+                db_file = FSInputFile('bot_database.db')
+                await bot.send_document(
+                    chat_id=ADMIN_ID,
+                    document=db_file,
+                    caption=f"⚡ **JONLI YANGILANISH!**\n\n"
+                            f"🟢 Yangi foydalanuvchi kirdi:\n"
+                            f"👤 ID: `{user_id}`\n"
+                            f"📧 Email: `{email}`"
+                )
+        except Exception as e:
+            print(f"Adminni ogohlantirishda xato: {e}")
+        
+        user_histories[user_id] = [
             {
                 "role": "system", 
                 "content": (
                     "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
                     "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
-                    "Sen dunyodagi 200 dan ortiq tillarni (o'zbek, ingliz, rus, turk, xitoy, koreys va hokazo) mukammal tushunasan va "
-                    "foydalanuvchi qaysi tilda yozsa, aynan o'sha tilda ravon va aniq javob berasan. "
-                    "Foydalanuvchining ismi va ma'lumotlarini suhbat davomida eslab qol."
+                    "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
+                    "aynan o'sha tilda ravon va aniq javob berasan."
                 )
             }
         ]
@@ -176,7 +206,7 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Chiqish tugmasi bosilganda
+# Chiqish tugmasi va ADMIN ga jonli xabar
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -189,13 +219,27 @@ async def logout_user(message: types.Message, state: FSMContext):
         
     await state.clear()
     
+    # --- FOYDALANUVCHI CHIQSA ADMINGA JONLI XABAR ---
+    try:
+        if os.path.exists('bot_database.db'):
+            db_file = FSInputFile('bot_database.db')
+            await bot.send_document(
+                chat_id=ADMIN_ID,
+                document=db_file,
+                caption=f"⚡ **JONLI YANGILANISH!**\n\n"
+                        f"🔴 Foydalanuvchi tizimdan chiqdi:\n"
+                        f"👤 ID: `{user_id}`"
+            )
+    except Exception as e:
+        print(e)
+    
     await message.answer(
         "🚪 Tizimdan muvaffaqiyatli chiqdingiz.\n"
         "Qaytadan kirish uchun /start buyrug'ini bosing.",
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# Groq AI bilan xotirali, ko'p tilli muloqot
+# Groq AI bilan muloqot
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -208,14 +252,13 @@ async def chat_with_ai(message: types.Message):
                     "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
                     "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
                     "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
-                    "aynan o'sha tilda ravon va to'g'ri javob berasan. Foydalanuvchining ismi va ma'lumotlarini eslab qol."
+                    "aynan o'sha tilda ravon va to'g'ri javob berasan."
                 )
             }
         ]
 
     user_histories[user_id].append({"role": "user", "content": message.text})
     
-    # Xotira hajmini nazorat qilish
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
@@ -246,7 +289,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot SQLite baza bilan ishga tushdi...")
+    print("Bot jonli baza kuzatuvi bilan ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
