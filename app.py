@@ -57,7 +57,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     if user_id in verified_users:
         await message.answer(
-            "✅ Siz allaqachon tizimdasiz. Menga istalgan savolingizni yuborishingiz mumkin!",
+            "✅ Siz allaqachon tizimdasiz. Menga istalgan tilda istalgan savolingizni yuborishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
@@ -66,6 +66,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
         "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yasaganlar! 💻✨\n\n"
+        "🌐 Men 200 dan ortiq tillarda muloqot qila olaman.\n\n"
         "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
         parse_mode="Markdown"
     )
@@ -116,16 +117,22 @@ async def process_code(message: types.Message, state: FSMContext):
 
     if user_code == real_code:
         verified_users.add(message.from_user.id)
-        # Eski chat tarixini tozalash (yangi kirish uchun)
+        # Eski chat tarixini tozalash va 200+ tilni qo'llab-quvvatlovchi system promptni o'rnatish
         user_histories[message.from_user.id] = [
             {
                 "role": "system", 
-                "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. Shuningdek, foydalanuvchining ismi va ma'lumotlarini suhbat davomida eslab qol."
+                "content": (
+                    "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
+                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
+                    "Sen dunyodagi 200 dan ortiq tillarni (o'zbek, ingliz, rus, turk, xitoy, koreys va hokazo) mukammal tushunasan va "
+                    "foydalanuvchi qaysi tilda yozsa, aynan o'sha tilda ravon va aniq javob berasan. "
+                    "Foydalanuvchining ismi va ma'lumotlarini suhbat davomida eslab qol."
+                )
             }
         ]
         
         await message.answer(
-            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi AURAgpt botidan to'liq foydalanishingiz mumkin!",
+            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi istalgan tilda savollaringizni berishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
@@ -145,14 +152,13 @@ async def logout_user(message: types.Message, state: FSMContext):
         
     await state.clear()
     
-    # Klavierni olib tashlash va boshlang'ich holatga qaytarish
     await message.answer(
         "🚪 Tizimdan muvaffaqiyatli chiqdingiz.\n"
         "Qaytadan kirish uchun /start buyrug'ini bosing.",
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# Groq AI bilan xotirali muloqot
+# Groq AI bilan xotirali va ko'p tilli muloqot
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -161,7 +167,12 @@ async def chat_with_ai(message: types.Message):
         user_histories[user_id] = [
             {
                 "role": "system", 
-                "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. Shuningdek, foydalanuvchining ismi va ma'lumotlarini suhbat davomida eslab qol."
+                "content": (
+                    "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
+                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
+                    "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
+                    "aynan o'sha tilda ravon va to'g'ri javob berasan. Foydalanuvchining ismi va ma'lumotlarini eslab qol."
+                )
             }
         ]
 
@@ -171,18 +182,30 @@ async def chat_with_ai(message: types.Message):
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
-    try:
-        completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=user_histories[user_id]
-        )
-        response_text = completion.choices[0].message.content
-        
+    models = [
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b"
+    ]
+
+    response_text = None
+    for model_name in models:
+        try:
+            completion = groq_client.chat.completions.create(
+                model=model_name,
+                messages=user_histories[user_id]
+            )
+            response_text = completion.choices[0].message.content
+            break  
+        except Exception as e:
+            print(f"Model {model_name} xato berdi: {str(e)}")
+            continue  
+
+    if response_text:
         user_histories[user_id].append({"role": "assistant", "content": response_text})
-        
         await message.answer(response_text, reply_markup=get_chat_keyboard())
-    except Exception as e:
-        await message.answer(f"⚠ Xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
+    else:
+        await message.answer("⚠ Hozirda sun'iy intellekt modellariga ulanishda xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.", reply_markup=get_chat_keyboard())
 
 async def main():
     Thread(target=run_flask).start()
