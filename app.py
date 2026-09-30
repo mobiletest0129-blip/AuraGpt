@@ -13,7 +13,7 @@ from groq import Groq
 from flask import Flask
 from threading import Thread
 
-# Flask server for Render port binding
+# Render port talabini qondirish uchun kichik Flask server
 app_flask = Flask('')
 
 @app_flask.route('/')
@@ -23,22 +23,22 @@ def home():
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
-# Tokens and keys
+# Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Admin ID
+# Admin ID ni muhit o'zgaruvchisidan o'qiymiz
 admin_env = os.getenv("ADMIN_ID")
 ADMIN_ID = int(admin_env) if admin_env else 0  
 
-# Bot and Groq setup
+# Bot va Groq sozlamalari
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- SQLITE DATABASE ---
+# --- SQLITE BAZA BILAN ISHLASH ---
 def init_db():
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
@@ -83,7 +83,7 @@ def get_all_users():
     conn.close()
     return rows
 
-# FSM States
+# Foydalanuvchi holatlari (FSM)
 class AuthState(StatesGroup):
     waiting_for_email = State()
     waiting_for_code = State()
@@ -98,14 +98,14 @@ def get_chat_keyboard():
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)
 
-# /start command
+# /start buyrug'i
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
     if is_user_verified(user_id):
         await message.answer(
-            "✅ Siz allaqachon tizimdasiz. Menga matn yuborishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
+            "✅ Siz allaqachon tizimdasiz. Menga istalgan tilda istalgan savolingizni yuborishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
@@ -114,17 +114,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
         "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yasaganlar! 💻✨\n\n"
-        "🌐 Men matnlarni tarjima qilaman va siz istagan rasmlarni chizib bera olaman.\n\n"
+        "🌐 Men 200 dan ortiq tillarda muloqot qila olaman.\n\n"
         "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
         parse_mode="Markdown"
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- ADMIN /users COMMAND ---
+# --- FAQAT ADMIN UCHUN /users BUYRUĞI ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        return  
+        return  # Boshqa foydalanuvchilar uchun javob bermaydi
     
     users = get_all_users()
     if not users:
@@ -137,7 +137,7 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# Email processing
+# Emailni qabul qilish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -173,7 +173,7 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
-# Code verification
+# Kodni tekshirish va ADMINGA faqat matnli xabar yuborish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -212,14 +212,14 @@ async def process_code(message: types.Message, state: FSMContext):
         ]
         
         await message.answer(
-            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi matn yuborishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
+            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi istalgan tilda savollaringizni berishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Logout
+# Chiqish tugmasi va ADMINGA faqat matnli xabar
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -250,34 +250,11 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# --- PHOTO HANDLER (UPDATED TO PREVENT VISION ERRORS) ---
-@dp.message(AuthState.authenticated, F.photo)
-async def handle_photo(message: types.Message):
-    await message.answer(
-        "📷 Hozirgi kunda rasm tahlil qilish xizmati vaqtincha yangilanmoqda. Iltimos, matn ko'rinishida yozing yoki `chiz: [mavzu]` deb rasm chizishni buyurtma qiling!",
-        reply_markup=get_chat_keyboard()
-    )
-
-# --- TEXT CHAT & IMAGE GENERATION ---
+# Groq AI bilan muloqot
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
-    text_input = message.text.strip()
     
-    if text_input.lower().startswith(("chiz:", "rasm chiz:", "draw:")):
-        prompt = text_input.split(":", 1)[1].strip()
-        await message.answer("🎨 Sun'iy intellekt siz uchun rasm tayyorlamoqda...", reply_markup=get_chat_keyboard())
-        
-        encoded_prompt = requests.utils.quote(prompt)
-        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-        
-        try:
-            await message.answer_photo(photo=image_url, caption=f"✨ Sizning so'rovingiz bo'yicha yaratilgan rasm:\n_{prompt}_", parse_mode="Markdown", reply_markup=get_chat_keyboard())
-            return
-        except Exception as e:
-            await message.answer(f"⚠️ Rasm yaratishda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
-            return
-
     if user_id not in user_histories:
         user_histories[user_id] = [
             {
@@ -291,14 +268,15 @@ async def chat_with_ai(message: types.Message):
             }
         ]
 
-    user_histories[user_id].append({"role": "user", "content": text_input})
+    user_histories[user_id].append({"role": "user", "content": message.text})
     
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
     models = [
+        "llama-3.1-8b-instant",
         "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant"
+        "openai/gpt-oss-120b"
     ]
 
     response_text = None
@@ -322,7 +300,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot muvaffaqiyatli ishga tushdi...")
+    print("Bot faylsiz, toza rejimda ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
