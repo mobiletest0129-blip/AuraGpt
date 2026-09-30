@@ -52,7 +52,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
     await message.answer(
         "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
-        "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yaratganlar! 💻✨\n\n"
+        "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yasaganlar! 💻✨\n\n"
         "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
         parse_mode="Markdown"
     )
@@ -112,15 +112,9 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Groq AI bilan muloqot (3 ta model zanjiri bilan)
+# Groq AI bilan muloqot (System prompt orqali "yasagan" deb o'rgatildi)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
-    # Agar foydalanuvchi "Sizni kim yasagan?" yoki shunga o'xshash savol bersa, to'g'ridan-to'g'ri javob beramiz
-    text_lower = message.text.lower()
-    if any(word in text_lower for word in ["kim yasagan", "kim yaratgan", "muallifin", "muallifi kim", "creator"]):
-        await message.answer("Meni mohir dasturchi **Bunyodbek Zokirov** yasaganlar! 👨‍💻✨")
-        return
-
     models = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
@@ -132,7 +126,13 @@ async def chat_with_ai(message: types.Message):
         try:
             completion = groq_client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "user", "content": message.text}]
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt."
+                    },
+                    {"role": "user", "content": message.text}
+                ]
             )
             response_text = completion.choices[0].message.content
             break  
