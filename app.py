@@ -254,18 +254,16 @@ async def logout_user(message: types.Message, state: FSMContext):
 @dp.message(AuthState.authenticated, F.photo)
 async def handle_photo(message: types.Message):
     user_id = message.from_user.id
-    photo = message.photo[-1] # Eng sifatli hajmini olamiz
+    photo = message.photo[-1]
     file_info = await bot.get_file(photo.file_id)
     file_path = file_info.file_path
     
-    # Rasmni yuklab olish uchun URL
     photo_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
     caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, batafsil tushuntirib ber."
 
     await message.answer("🔍 Rasm tahlil qilinmoqda, biroz kuting...", reply_markup=get_chat_keyboard())
 
     try:
-        # Groq Vision (llama-3.2-11b-vision-preview) modeli orqali rasmni o'qiymiz
         completion = groq_client.chat.completions.create(
             model="llama-3.2-11b-vision-preview",
             messages=[
@@ -290,12 +288,10 @@ async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
     text_input = message.text.strip()
     
-    # Agar foydalanuvchi rasm chizishni so'rasa (masalan: "rasm chiz: ...", "draw: ...", "chiz: ...")
     if text_input.lower().startswith(("chiz:", "rasm chiz:", "draw:")):
         prompt = text_input.split(":", 1)[1].strip()
         await message.answer("🎨 Sun'iy intellekt siz uchun rasm tayyorlamoqda...", reply_markup=get_chat_keyboard())
         
-        # Bepul va tez ishlaydigan Pollinations AI rasm generatori havolasi
         encoded_prompt = requests.utils.quote(prompt)
         image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
         
@@ -306,7 +302,6 @@ async def chat_with_ai(message: types.Message):
             await message.answer(f"⚠️ Rasm yaratishda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
             return
 
-    # Odatiy matnli suhbat
     if user_id not in user_histories:
         user_histories[user_id] = [
             {
@@ -351,7 +346,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot Vision va Rasm generatsiya funksiyalari bilan ishga tushdi...")
+    print("Bot muvaffaqiyatli ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
