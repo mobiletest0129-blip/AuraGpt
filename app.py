@@ -24,14 +24,15 @@ def home():
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
-# Tokenlar va kalitlar
+# Tokenlar va kalitlar (Hammasi yashirin holatda olinadi)
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Sizning Telegram ID ingiz
-ADMIN_ID = 8784874191  
+# Telegram ID ni ham yashirin muhitdan o'qiymiz (agar topilmasa xavfsizlik uchun 0 bo'ladi)
+admin_env = os.getenv("ADMIN_ID")
+ADMIN_ID = int(admin_env) if admin_env else 0  
 
 # Bot va Groq sozlamalari
 bot = Bot(token=TOKEN)
@@ -112,7 +113,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# Qo'shimcha /db buyrug'i (hali ham qo'lda tekshirish uchun qoladi)
+# Qo'shimcha /db buyrug'i
 @dp.message(Command("db"))
 async def send_database_file(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -171,9 +172,8 @@ async def process_code(message: types.Message, state: FSMContext):
         
         add_verified_user(user_id, email)
         
-        # --- JONLI XABAR VA BAZANI ADMINGA AVTOMATIK YUBORISH ---
         try:
-            if os.path.exists('bot_database.db'):
+            if ADMIN_ID and os.path.exists('bot_database.db'):
                 db_file = FSInputFile('bot_database.db')
                 await bot.send_document(
                     chat_id=ADMIN_ID,
@@ -219,9 +219,8 @@ async def logout_user(message: types.Message, state: FSMContext):
         
     await state.clear()
     
-    # --- FOYDALANUVCHI CHIQSA ADMINGA JONLI XABAR ---
     try:
-        if os.path.exists('bot_database.db'):
+        if ADMIN_ID and os.path.exists('bot_database.db'):
             db_file = FSInputFile('bot_database.db')
             await bot.send_document(
                 chat_id=ADMIN_ID,
@@ -289,7 +288,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot jonli baza kuzatuvi bilan ishga tushdi...")
+    print("Bot xavfsiz rejimda ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
