@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from groq import Groq
 from flask import Flask
 from threading import Thread
@@ -38,16 +39,27 @@ class AuthState(StatesGroup):
     waiting_for_code = State()
     authenticated = State()
 
-verified_users = set()
-verification_codes = {}
-user_histories = {}  # Foydalanuvchilarning chat tarixini saqlash uchun lug'at
+verified_users = set()       # Tasdiqlangan foydalanuvchilar ID lari
+verification_codes = {}      # Tasdiqlash kodlari
+user_histories = {}          # Chat tarixi (xotira)
+
+# Chiqish tugmasi uchun klaviatura yaratish funksiyasi
+def get_chat_keyboard():
+    builder = ReplyKeyboardBuilder()
+    builder.button(text="🚪 Chiqish")
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True)
 
 # /start buyrug'i
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    
     if user_id in verified_users:
-        await message.answer("✅ Siz allaqachon ro'yxatdan o'tgansiz. Menga istalgan savolingizni yuborishingiz mumkin!")
+        await message.answer(
+            "✅ Siz allaqachon tizimdasiz. Menga istalgan savolingizni yuborishingiz mumkin!",
+            reply_markup=get_chat_keyboard()
+        )
         await state.set_state(AuthState.authenticated)
         return
 
@@ -87,9 +99,6 @@ async def process_email(message: types.Message, state: FSMContext):
 
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"Brevo Status Code: {response.status_code}")
-        print(f"Brevo Response: {response.text}")
-        
         if response.status_code in [200, 201, 202]:
             await state.update_data(email=email)
             await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
@@ -97,7 +106,6 @@ async def process_email(message: types.Message, state: FSMContext):
         else:
             await message.answer(f"⚠ Xatolik (Brevo): {response.text}")
     except Exception as e:
-        print(f"Network Error: {str(e)}")
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
 # Kodni tekshirish
@@ -108,63 +116,76 @@ async def process_code(message: types.Message, state: FSMContext):
 
     if user_code == real_code:
         verified_users.add(message.from_user.id)
-        await message.answer("🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi AURAgpt botidan to'liq foydalanishingiz mumkin!")
+        # Eski chat tarixini tozalash (yangi kirish uchun)
+        user_histories[message.from_user.id] = [
+            {
+                "role": "system", 
+                "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. Shuningdek, foydalanuvchining ismi va ma'lumotlarini suhbat davomida eslab qol."
+            }
+        ]
+        
+        await message.answer(
+            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi AURAgpt botidan to'liq foydalanishingiz mumkin!",
+            reply_markup=get_chat_keyboard()
+        )
         await state.set_state(AuthState.authenticated)
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Groq AI bilan xotirali muloqot (Chat tarixi bilan)
+# Chiqish tugmasi bosilganda
+@dp.message(F.text == "🚪 Chiqish")
+async def logout_user(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if user_id in verified_users:
+        verified_users.remove(user_id)
+    if user_id in user_histories:
+        del user_histories[user_id]
+    if user_id in verification_codes:
+        del verification_codes[user_id]
+        
+    await state.clear()
+    
+    # Klavierni olib tashlash va boshlang'ich holatga qaytarish
+    await message.answer(
+        "🚪 Tizimdan muvaffaqiyatli chiqdingiz.\n"
+        "Qaytadan kirish uchun /start buyrug'ini bosing.",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+
+# Groq AI bilan xotirali muloqot
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
     
-    # Agar foydalanuvchining tarixi hali ochilmagan bo'lsa, System prompt bilan boshlaymiz
     if user_id not in user_histories:
         user_histories[user_id] = [
             {
                 "role": "system", 
-                "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt."
+                "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. Shuningdek, foydalanuvchining ismi va ma'lumotlarini suhbat davomida eslab qol."
             }
         ]
 
-    # Foydalanuvchi xabarini tarixga qo'shamiz
     user_histories[user_id].append({"role": "user", "content": message.text})
     
-    # Tarix juda uzun bo'lib ketmasligi uchun oxirgi 15 ta xabarni qoldiramiz (xotirani to'ldirib yubormaslik uchun)
-    if len(user_histories[user_id]) > 16:
-        # System promptni saqlagan holda oxirgi xabarlarni qoldiramiz
-        user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-15:]
+    # Xotira hajmini nazorat qilish
+    if len(user_histories[user_id]) > 21:
+        user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
-    models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "openai/gpt-oss-120b"
-    ]
-    
-    response_text = None
-    for model_name in models:
-        try:
-            completion = groq_client.chat.completions.create(
-                model=model_name,
-                messages=user_histories[user_id]
-            )
-            response_text = completion.choices[0].message.content
-            break  
-        except Exception as e:
-            print(f"Model {model_name} xato berdi: {str(e)}")
-            continue  
-
-    if response_text:
-        # Botning javobini ham tarixga qo'shamiz (xotirada saqlanishi uchun)
+    try:
+        completion = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=user_histories[user_id]
+        )
+        response_text = completion.choices[0].message.content
+        
         user_histories[user_id].append({"role": "assistant", "content": response_text})
-        await message.answer(response_text)
-    else:
-        await message.answer("⚠ Hozirda sun'iy intellekt modellariga ulanishda xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.")
+        
+        await message.answer(response_text, reply_markup=get_chat_keyboard())
+    except Exception as e:
+        await message.answer(f"⚠ Xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
 
 async def main():
-    # Flask serverni alohida oqimda ishga tushiramiz
     Thread(target=run_flask).start()
-    
     print("Bot ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
