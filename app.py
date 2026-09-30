@@ -1,9 +1,7 @@
 import asyncio
 import random
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -27,7 +25,7 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       # Sizning Gmail pochtangiz
-EMAIL_PASSWORD = os.getenv("BREVO_API_KEY")    # Google'dan olingan 16 xonali ilova paroli (dgfpuuwlesktaxh)
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")    # Brevo API kaliti
 
 # Bot va Groq sozlamalari
 bot = Bot(token=TOKEN)
@@ -55,7 +53,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer("📧 Assalomu alaykum! AURAgpt botidan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):", parse_mode="Markdown")
     await state.set_state(AuthState.waiting_for_email)
 
-# Emailni qabul qilish va SMTP orqali kod yuborish
+# Emailni qabul qilish va Brevo HTTP API orqali kod yuborish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -67,28 +65,32 @@ async def process_email(message: types.Message, state: FSMContext):
     code = str(random.randint(100000, 999999))
     verification_codes[message.from_user.id] = code
 
-    msg = MIMEMultipart()
-    msg['From'] = SENDER_EMAIL
-    msg['To'] = email
-    msg['Subject'] = "AURAgpt - Tasdiqlash kodi"
-    
-    body = f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
-    msg.attach(MIMEText(body, 'plain'))
+    # Brevo HTTP API orqali xat yuborish (Render'da bloklanmaydi)
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"name": "AURAgpt Bot", "email": SENDER_EMAIL},
+        "to": [{"email": email}],
+        "subject": "AURAgpt - Tasdiqlash kodi",
+        "textContent": f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
+    }
 
     try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(SENDER_EMAIL, EMAIL_PASSWORD)
-        server.sendmail(SENDER_EMAIL, email, msg.as_string())
-        server.quit()
-
-        await state.update_data(email=email)
-        await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
-        await state.set_state(AuthState.waiting_for_code)
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code in [200, 201, 202]:
+            await state.update_data(email=email)
+            await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
+            await state.set_state(AuthState.waiting_for_code)
+        else:
+            print(f"Brevo API Error: {response.text}")
+            await message.answer("⚠ Xat yuborishda xatolik yuz berdi. Iltimos, keyinroq urinib ko'ring.")
     except Exception as e:
-        # Aniq xatolikni Render loglariga to'liq va tushunarli qilib chiqaramiz
-        print(f"DIQQAT SMTP XATOLIGI: {repr(e)}")
-        await message.answer(f"⚠ Xatolik yuz berdi: {str(e)}")
+        print(f"Network Error: {str(e)}")
+        await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
 # Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
