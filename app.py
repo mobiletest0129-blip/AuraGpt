@@ -1,6 +1,7 @@
 import asyncio
 import random
 import os
+import sqlite3
 import requests
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -33,15 +34,51 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
+# --- SQLITE BAZA BILAN ISHLASH ---
+def init_db():
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    # Tasdiqlangan foydalanuvchilar jadvali
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS verified_users (
+            user_id INTEGER PRIMARY KEY
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def is_user_verified(user_id: int) -> bool:
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id FROM verified_users WHERE user_id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+def add_verified_user(user_id: int):
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR IGNORE INTO verified_users (user_id) VALUES (?)', (user_id,))
+    conn.commit()
+    conn.close()
+
+def remove_verified_user(user_id: int):
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM verified_users WHERE user_id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+
 # Foydalanuvchi holatlari (FSM)
 class AuthState(StatesGroup):
     waiting_for_email = State()
     waiting_for_code = State()
     authenticated = State()
 
-verified_users = set()       # Tasdiqlangan foydalanuvchilar ID lari
-verification_codes = {}      # Tasdiqlash kodlari
-user_histories = {}          # Chat tarixi (xotira)
+verification_codes = {}      # Tasdiqlash kodlari vaqtincha xotirada
+user_histories = {}          # Chat tarixi xotirasi
 
 # Chiqish tugmasi uchun klaviatura yaratish funksiyasi
 def get_chat_keyboard():
@@ -55,7 +92,7 @@ def get_chat_keyboard():
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
-    if user_id in verified_users:
+    if is_user_verified(user_id):
         await message.answer(
             "✅ Siz allaqachon tizimdasiz. Menga istalgan tilda istalgan savolingizni yuborishingiz mumkin!",
             reply_markup=get_chat_keyboard()
@@ -84,7 +121,6 @@ async def process_email(message: types.Message, state: FSMContext):
     code = str(random.randint(100000, 999999))
     verification_codes[message.from_user.id] = code
 
-    # Brevo HTTP API orqali xat yuborish
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {
         "accept": "application/json",
@@ -116,8 +152,9 @@ async def process_code(message: types.Message, state: FSMContext):
     real_code = verification_codes.get(message.from_user.id)
 
     if user_code == real_code:
-        verified_users.add(message.from_user.id)
-        # Eski chat tarixini tozalash va 200+ tilni qo'llab-quvvatlovchi system promptni o'rnatish
+        add_verified_user(message.from_user.id)
+        
+        # Chat tarixini boshlash
         user_histories[message.from_user.id] = [
             {
                 "role": "system", 
@@ -143,8 +180,8 @@ async def process_code(message: types.Message, state: FSMContext):
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    if user_id in verified_users:
-        verified_users.remove(user_id)
+    remove_verified_user(user_id)
+    
     if user_id in user_histories:
         del user_histories[user_id]
     if user_id in verification_codes:
@@ -158,7 +195,7 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# Groq AI bilan xotirali va ko'p tilli muloqot
+# Groq AI bilan xotirali, ko'p tilli muloqot
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -209,7 +246,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot ishga tushdi...")
+    print("Bot SQLite baza bilan ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
