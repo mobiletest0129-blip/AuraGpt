@@ -9,7 +9,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from aiogram.types import FSInputFile
 from groq import Groq
 from flask import Flask
 from threading import Thread
@@ -30,7 +29,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Admin ID ni muhit o'zgaruvchisidan o'qimiz (Render sozlamalariga ADMIN_ID yozib qo'yilishi shart)
+# Admin ID ni muhit o'zgaruvchisidan o'qiymiz
 admin_env = os.getenv("ADMIN_ID")
 ADMIN_ID = int(admin_env) if admin_env else 0  
 
@@ -125,7 +124,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        return  # Boshqa foydalanuvchilar uchun umuman javob bermaydi (sir saqlanadi)
+        return  # Boshqa foydalanuvchilar uchun javob bermaydi
     
     users = get_all_users()
     if not users:
@@ -174,7 +173,7 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
-# Kodni tekshirish va ADMIN ga jonli xabar yuborish
+# Kodni tekshirish va ADMINGA faqat matnli xabar yuborish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -191,7 +190,7 @@ async def process_code(message: types.Message, state: FSMContext):
             if ADMIN_ID:
                 await bot.send_message(
                     chat_id=ADMIN_ID,
-                    text=f"⚡ **JONLI YANGILANISH!**\n\n"
+                    text=f"⚡ **JONLI XABARNOMA!**\n\n"
                          f"🟢 Yangi foydalanuvchi kirdi:\n"
                          f"👤 ID: `{user_id}`\n"
                          f"📧 Email: `{email}`",
@@ -220,7 +219,7 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Chiqish tugmasi va ADMIN ga jonli xabar
+# Chiqish tugmasi va ADMINGA faqat matnli xabar
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -237,7 +236,7 @@ async def logout_user(message: types.Message, state: FSMContext):
         if ADMIN_ID:
             await bot.send_message(
                 chat_id=ADMIN_ID,
-                text=f"⚡ **JONLI YANGILANISH!**\n\n"
+                text=f"⚡ **JONLI XABARNOMA!**\n\n"
                      f"🔴 Foydalanuvchi tizimdan chiqdi:\n"
                      f"👤 ID: `{user_id}`",
                 parse_mode="Markdown"
@@ -301,7 +300,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot /users buyrug'i bilan ishga tushdi...")
+    print("Bot faylsiz, toza rejimda ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
