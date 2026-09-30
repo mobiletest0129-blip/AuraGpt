@@ -1,18 +1,33 @@
 import asyncio
 import random
 import os
-import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from groq import Groq
+from flask import Flask
+from threading import Thread
 
-# Tokenlar va kalitlar (Render Environment dan olinadi)
+# Render port talabini qondirish uchun kichik Flask server
+app_flask = Flask('')
+
+@app_flask.route('/')
+def home():
+    return "AURAgpt Bot is active!"
+
+def run_flask():
+    app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+# Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-RESEND_API_KEY = os.getenv("BREVO_API_KEY") # Oldingi o'zgaruvchi nomi saqlangan bo'lsa ham ishlayveradi
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")       # Sizning Gmail pochtangiz
+EMAIL_PASSWORD = os.getenv("BREVO_API_KEY")    # Google'dan olingan 16 xonali ilova paroli (dgfpuuwlesktaxh)
 
 # Bot va Groq sozlamalari
 bot = Bot(token=TOKEN)
@@ -25,7 +40,6 @@ class AuthState(StatesGroup):
     waiting_for_code = State()
     authenticated = State()
 
-# Tasdiqlangan foydalanuvchilar bazasi va kodlar
 verified_users = set()
 verification_codes = {}
 
@@ -41,7 +55,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer("📧 Assalomu alaykum! AURAgpt botidan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):", parse_mode="Markdown")
     await state.set_state(AuthState.waiting_for_email)
 
-# Emailni qabul qilish va Resend API orqali kod yuborish
+# Emailni qabul qilish va SMTP orqali kod yuborish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -53,31 +67,27 @@ async def process_email(message: types.Message, state: FSMContext):
     code = str(random.randint(100000, 999999))
     verification_codes[message.from_user.id] = code
 
-    # Resend API URL va sozlamalari
-    url = "https://api.resend.com/emails"
-    headers = {
-        "Authorization": f"Bearer {RESEND_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "from": "AURAgpt <onboarding@resend.dev>",
-        "to": [email],
-        "subject": "AURAgpt - Tasdiqlash kodi",
-        "html": f"<p>Sizning AURAgpt boti uchun tasdiqlash kodingiz: <b>{code}</b></p>"
-    }
+    msg = MIMEMultipart()
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = email
+    msg['Subject'] = "AURAgpt - Tasdiqlash kodi"
+    
+    body = f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
+    msg.attach(MIMEText(body, 'plain'))
 
     try:
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            await state.update_data(email=email)
-            await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
-            await state.set_state(AuthState.waiting_for_code)
-        else:
-            print(f"Resend API Error: {response.text}")
-            await message.answer("⚠ Xatolik yuz berdi. Pochtaga kod yuborib bo'lmadi. Keyinroq urinib ko'ring:")
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(SENDER_EMAIL, EMAIL_PASSWORD)
+        server.sendmail(SENDER_EMAIL, email, msg.as_string())
+        server.quit()
+
+        await state.update_data(email=email)
+        await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
+        await state.set_state(AuthState.waiting_for_code)
     except Exception as e:
-        print(f"Request Error: {str(e)}")
-        await message.answer("⚠ Xatolik yuz berdi. Pochtaga kod yuborib bo'lmadi.")
+        print(f"SMTP Error: {str(e)}")
+        await message.answer("⚠ Xatolik yuz berdi. Pochtaga kod yuborib bo'lmadi. Parolni yoki sozlamalarni tekshiring.")
 
 # Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
@@ -103,9 +113,12 @@ async def chat_with_ai(message: types.Message):
         response_text = completion.choices[0].message.content
         await message.answer(response_text)
     except Exception as e:
-        await message.answer(f"⚠️️ Sun'iy intellektga ulanishda xatolik yuz berdi: {str(e)}")
+        await message.answer(f"⚠ Sun'iy intellektga ulanishda xatolik yuz berdi: {str(e)}")
 
 async def main():
+    # Flask serverni alohida oqimda (thread) ishga tushiramiz
+    Thread(target=run_flask).start()
+    
     print("Bot ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
