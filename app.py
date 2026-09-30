@@ -18,7 +18,7 @@ app_flask = Flask('')
 
 @app_flask.route('/')
 def home():
-    return "AURAgpt Bot with Vision & Image Generation is active!"
+    return "AURAgpt Bot is active!"
 
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -105,7 +105,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     if is_user_verified(user_id):
         await message.answer(
-            "✅ Siz allaqachon tizimdasiz. Menga matn, rasm yuborishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
+            "✅ Siz allaqachon tizimdasiz. Menga matn yuborishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
@@ -114,7 +114,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
         "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yasaganlar! 💻✨\n\n"
-        "🌐 Men matnlarni tarjima qilaman, yuborgan rasmlaringizni tahlil qilaman va siz istagan rasmlarni chizib bera olaman.\n\n"
+        "🌐 Men matnlarni tarjima qilaman va siz istagan rasmlarni chizib bera olaman.\n\n"
         "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
         parse_mode="Markdown"
     )
@@ -212,7 +212,7 @@ async def process_code(message: types.Message, state: FSMContext):
         ]
         
         await message.answer(
-            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi matn yuborishingiz, rasm tashlab tahlil qildirishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
+            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi matn yuborishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
@@ -250,37 +250,13 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# --- VISION (PHOTO ANALYSIS) ---
+# --- PHOTO HANDLER (UPDATED TO PREVENT VISION ERRORS) ---
 @dp.message(AuthState.authenticated, F.photo)
 async def handle_photo(message: types.Message):
-    user_id = message.from_user.id
-    photo = message.photo[-1]
-    file_info = await bot.get_file(photo.file_id)
-    file_path = file_info.file_path
-    
-    photo_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
-    caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, batafsil tushuntirib ber."
-
-    await message.answer("🔍 Rasm tahlil qilinmoqda, biroz kuting...", reply_markup=get_chat_keyboard())
-
-    try:
-        completion = groq_client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": caption},
-                        {"type": "image_url", "image_url": {"url": photo_url}}
-                    ]
-                }
-            ],
-            max_tokens=1000
-        )
-        response_text = completion.choices[0].message.content
-        await message.answer(response_text, reply_markup=get_chat_keyboard())
-    except Exception as e:
-        await message.answer(f"⚠️ Rasmni tahlil qilishda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
+    await message.answer(
+        "📷 Hozirgi kunda rasm tahlil qilish xizmati vaqtincha yangilanmoqda. Iltimos, matn ko'rinishida yozing yoki `chiz: [mavzu]` deb rasm chizishni buyurtma qiling!",
+        reply_markup=get_chat_keyboard()
+    )
 
 # --- TEXT CHAT & IMAGE GENERATION ---
 @dp.message(AuthState.authenticated, F.text)
