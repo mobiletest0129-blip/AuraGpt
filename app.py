@@ -13,12 +13,12 @@ from groq import Groq
 from flask import Flask
 from threading import Thread
 
-# Render port talabini qondirish uchun kichik Flask server
+# Render port talabini qondirish uchun Flask server
 app_flask = Flask('')
 
 @app_flask.route('/')
 def home():
-    return "AURAgpt Bot is active!"
+    return "AURAgpt Bot with Vision & Image Generation is active!"
 
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -29,7 +29,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Admin ID ni muhit o'zgaruvchisidan o'qiymiz
+# Admin ID
 admin_env = os.getenv("ADMIN_ID")
 ADMIN_ID = int(admin_env) if admin_env else 0  
 
@@ -105,7 +105,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     if is_user_verified(user_id):
         await message.answer(
-            "✅ Siz allaqachon tizimdasiz. Menga istalgan tilda istalgan savolingizni yuborishingiz mumkin!",
+            "✅ Siz allaqachon tizimdasiz. Menga matn, rasm yuborishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
@@ -114,7 +114,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
         "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yasaganlar! 💻✨\n\n"
-        "🌐 Men 200 dan ortiq tillarda muloqot qila olaman.\n\n"
+        "🌐 Men matnlarni tarjima qilaman, yuborgan rasmlaringizni tahlil qilaman va siz istagan rasmlarni chizib bera olaman.\n\n"
         "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
         parse_mode="Markdown"
     )
@@ -124,7 +124,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        return  # Boshqa foydalanuvchilar uchun javob bermaydi
+        return  
     
     users = get_all_users()
     if not users:
@@ -173,7 +173,7 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
-# Kodni tekshirish va ADMINGA faqat matnli xabar yuborish
+# Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -212,14 +212,14 @@ async def process_code(message: types.Message, state: FSMContext):
         ]
         
         await message.answer(
-            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi istalgan tilda savollaringizni berishingiz mumkin!",
+            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi matn yuborishingiz, rasm tashlab tahlil qildirishingiz yoki rasm chizishni buyurtma qilishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Chiqish tugmasi va ADMINGA faqat matnli xabar
+# Chiqish tugmasi
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -250,11 +250,63 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# Groq AI bilan muloqot
+# --- RASMNI KO'RISH VA TAHLIL QILISH (VISION) ---
+@dp.message(AuthState.authenticated, F.photo)
+async def handle_photo(message: types.Message):
+    user_id = message.from_user.id
+    photo = message.photo[-1] # Eng sifatli hajmini olamiz
+    file_info = await bot.get_file(photo.file_id)
+    file_path = file_info.file_path
+    
+    # Rasmni yuklab olish uchun URL
+    photo_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+    caption = message.caption or "Bu rasmda nima tasvirlangan? Iltimos, batafsil tushuntirib ber."
+
+    await message.answer("🔍 Rasm tahlil qilinmoqda, biroz kuting...", reply_markup=get_chat_keyboard())
+
+    try:
+        # Groq Vision (llama-3.2-11b-vision-preview) modeli orqali rasmni o'qiymiz
+        completion = groq_client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": caption},
+                        {"type": "image_url", "image_url": {"url": photo_url}}
+                    ]
+                }
+            ],
+            max_tokens=1000
+        ]
+        response_text = completion.choices[0].message.content
+        await message.answer(response_text, reply_markup=get_chat_keyboard())
+    except Exception as e:
+        await message.answer(f"⚠️ Rasmni tahlil qilishda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
+
+# --- GROQ AI BILAN MULOQOT VA RASM GENERATSIYA ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
+    text_input = message.text.strip()
     
+    # Agar foydalanuvchi rasm chizishni so'rasa (masalan: "rasm chiz: ...", "draw: ...", "chiz: ...")
+    if text_input.lower().startswith(("chiz:", "rasm chiz:", "draw:")):
+        prompt = text_input.split(":", 1)[1].strip()
+        await message.answer("🎨 Sun'iy intellekt siz uchun rasm tayyorlamoqda...", reply_markup=get_chat_keyboard())
+        
+        # Bepul va tez ishlaydigan Pollinations AI rasm generatori havolasi
+        encoded_prompt = requests.utils.quote(prompt)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+        
+        try:
+            await message.answer_photo(photo=image_url, caption=f"✨ Sizning so'rovingiz bo'yicha yaratilgan rasm:\n_{prompt}_", parse_mode="Markdown", reply_markup=get_chat_keyboard())
+            return
+        except Exception as e:
+            await message.answer(f"⚠️ Rasm yaratishda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
+            return
+
+    # Odatiy matnli suhbat
     if user_id not in user_histories:
         user_histories[user_id] = [
             {
@@ -268,15 +320,14 @@ async def chat_with_ai(message: types.Message):
             }
         ]
 
-    user_histories[user_id].append({"role": "user", "content": message.text})
+    user_histories[user_id].append({"role": "user", "content": text_input})
     
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
     models = [
-        "llama-3.1-8b-instant",
         "llama-3.3-70b-versatile",
-        "openai/gpt-oss-120b"
+        "llama-3.1-8b-instant"
     ]
 
     response_text = None
@@ -300,7 +351,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot faylsiz, toza rejimda ishga tushdi...")
+    print("Bot Vision va Rasm generatsiya funksiyalari bilan ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
