@@ -59,7 +59,7 @@ async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
     
     if not email.endswith("@gmail.com"):
-        await message.answer("⚠️ Iltimos, haqiqiy Gmail manzilini kiriting (masalan: `ismingiz@gmail.com`):")
+        await message.answer("⚠️️ Iltimos, haqiqiy Gmail manzilini kiriting (masalan: `ismingiz@gmail.com`):")
         return
 
     code = str(random.randint(100000, 999999))
@@ -107,12 +107,12 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Groq AI bilan muloqot
+# Groq AI bilan muloqot (Yangilangan model)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     try:
         completion = groq_client.chat.completions.create(
-            model="mixtral-8x7b-32768",
+            model="llama-3.1-70b-versatile",
             messages=[{"role": "user", "content": message.text}]
         )
         response_text = completion.choices[0].message.content
