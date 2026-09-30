@@ -40,6 +40,7 @@ class AuthState(StatesGroup):
 
 verified_users = set()
 verification_codes = {}
+user_histories = {}  # Foydalanuvchilarning chat tarixini saqlash uchun lug'at
 
 # /start buyrug'i
 @dp.message(Command("start"))
@@ -112,9 +113,28 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Groq AI bilan muloqot (System prompt orqali "yasagan" deb o'rgatildi)
+# Groq AI bilan xotirali muloqot (Chat tarixi bilan)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
+    user_id = message.from_user.id
+    
+    # Agar foydalanuvchining tarixi hali ochilmagan bo'lsa, System prompt bilan boshlaymiz
+    if user_id not in user_histories:
+        user_histories[user_id] = [
+            {
+                "role": "system", 
+                "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt."
+            }
+        ]
+
+    # Foydalanuvchi xabarini tarixga qo'shamiz
+    user_histories[user_id].append({"role": "user", "content": message.text})
+    
+    # Tarix juda uzun bo'lib ketmasligi uchun oxirgi 15 ta xabarni qoldiramiz (xotirani to'ldirib yubormaslik uchun)
+    if len(user_histories[user_id]) > 16:
+        # System promptni saqlagan holda oxirgi xabarlarni qoldiramiz
+        user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-15:]
+
     models = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
@@ -126,13 +146,7 @@ async def chat_with_ai(message: types.Message):
         try:
             completion = groq_client.chat.completions.create(
                 model=model_name,
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt."
-                    },
-                    {"role": "user", "content": message.text}
-                ]
+                messages=user_histories[user_id]
             )
             response_text = completion.choices[0].message.content
             break  
@@ -141,6 +155,8 @@ async def chat_with_ai(message: types.Message):
             continue  
 
     if response_text:
+        # Botning javobini ham tarixga qo'shamiz (xotirada saqlanishi uchun)
+        user_histories[user_id].append({"role": "assistant", "content": response_text})
         await message.answer(response_text)
     else:
         await message.answer("⚠ Hozirda sun'iy intellekt modellariga ulanishda xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.")
