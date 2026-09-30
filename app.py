@@ -239,7 +239,7 @@ async def logout_user(message: types.Message, state: FSMContext):
                 text=f"⚡ **JONLI XABARNOMA!**\n\n"
                      f"🔴 Foydalanuvchi tizimdan chiqdi:\n"
                      f"👤 ID: `{user_id}`",
-                    parse_mode="Markdown"
+                parse_mode="Markdown"
             )
     except Exception as e:
         print(e)
@@ -265,7 +265,7 @@ async def handle_photo(message: types.Message):
 
     try:
         completion = groq_client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
+            model="llama-3.2-90b-vision-preview",
             messages=[
                 {
                     "role": "user",
