@@ -13,7 +13,7 @@ from groq import Groq
 from flask import Flask
 from threading import Thread
 
-# Render port talabini qondirish uchun Flask server
+# Flask server for Render port binding
 app_flask = Flask('')
 
 @app_flask.route('/')
@@ -23,7 +23,7 @@ def home():
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
-# Tokenlar va kalitlar
+# Tokens and keys
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
@@ -33,12 +33,12 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 admin_env = os.getenv("ADMIN_ID")
 ADMIN_ID = int(admin_env) if admin_env else 0  
 
-# Bot va Groq sozlamalari
+# Bot and Groq setup
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- SQLITE BAZA BILAN ISHLASH ---
+# --- SQLITE DATABASE ---
 def init_db():
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
@@ -83,7 +83,7 @@ def get_all_users():
     conn.close()
     return rows
 
-# Foydalanuvchi holatlari (FSM)
+# FSM States
 class AuthState(StatesGroup):
     waiting_for_email = State()
     waiting_for_code = State()
@@ -98,7 +98,7 @@ def get_chat_keyboard():
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)
 
-# /start buyrug'i
+# /start command
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -120,7 +120,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- FAQAT ADMIN UCHUN /users BUYRUĞI ---
+# --- ADMIN /users COMMAND ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -137,7 +137,7 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# Emailni qabul qilish
+# Email processing
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -173,7 +173,7 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
-# Kodni tekshirish
+# Code verification
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -219,7 +219,7 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Chiqish tugmasi
+# Logout
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -239,7 +239,7 @@ async def logout_user(message: types.Message, state: FSMContext):
                 text=f"⚡ **JONLI XABARNOMA!**\n\n"
                      f"🔴 Foydalanuvchi tizimdan chiqdi:\n"
                      f"👤 ID: `{user_id}`",
-                parse_mode="Markdown"
+                    parse_mode="Markdown"
             )
     except Exception as e:
         print(e)
@@ -250,7 +250,7 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# --- RASMNI KO'RISH VA TAHLIL QILISH (VISION) ---
+# --- VISION (PHOTO ANALYSIS) ---
 @dp.message(AuthState.authenticated, F.photo)
 async def handle_photo(message: types.Message):
     user_id = message.from_user.id
@@ -276,13 +276,13 @@ async def handle_photo(message: types.Message):
                 }
             ],
             max_tokens=1000
-        ]
+        )
         response_text = completion.choices[0].message.content
         await message.answer(response_text, reply_markup=get_chat_keyboard())
     except Exception as e:
         await message.answer(f"⚠️ Rasmni tahlil qilishda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
 
-# --- GROQ AI BILAN MULOQOT VA RASM GENERATSIYA ---
+# --- TEXT CHAT & IMAGE GENERATION ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
