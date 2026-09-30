@@ -19,7 +19,7 @@ app_flask = Flask('')
 
 @app_flask.route('/')
 def home():
-    return "AURAgpt Bot with Antivirus, File Reader & 3 Models is active!"
+    return "AURAgpt Bot with Antivirus, File Reader & Updated Models is active!"
 
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -29,7 +29,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
-VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY") # Optional: VirusTotal API for file scanning
+VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
 # Admin ID
 admin_env = os.getenv("ADMIN_ID")
@@ -50,7 +50,6 @@ def init_db():
             email TEXT
         )
     ''')
-    # Antibot / Spam tracking table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_activity (
             user_id INTEGER PRIMARY KEY,
@@ -107,13 +106,13 @@ def check_antibot(user_id: int) -> bool:
     
     if row:
         last_time, warnings = row
-        if now - last_time < 1.0: # If sending messages faster than 1 second
+        if now - last_time < 1.0:
             warnings += 1
             cursor.execute('UPDATE user_activity SET last_time = ?, warnings = ? WHERE user_id = ?', (now, warnings, user_id))
             conn.commit()
             conn.close()
             if warnings > 5:
-                return False # Spam detected
+                return False
         else:
             cursor.execute('UPDATE user_activity SET last_time = ?, warnings = 0 WHERE user_id = ?', (now, user_id))
             conn.commit()
@@ -307,7 +306,6 @@ async def handle_document(message: types.Message):
     file_name = document.file_name
     file_size = document.file_size
     
-    # Limit file size to 10MB to avoid server overload
     if file_size > 10 * 1024 * 1024:
         await message.answer("⚠️ Fayl hajmi juda katta (10 MB dan oshmasligi kerak).", reply_markup=get_chat_keyboard())
         return
@@ -321,7 +319,6 @@ async def handle_document(message: types.Message):
         
         file_bytes = downloaded_file.read()
         
-        # 1. Antivirus check via VirusTotal API (if configured)
         av_result_text = "🛡️ **Antivirus tekshiruvi:** VirusTotal API kaliti topilmadi, lekin fayl tuzilishi xavfsiz ko'rinadi."
         if VIRUSTOTAL_API_KEY:
             vt_url = "https://www.virustotal.com/api/v3/files"
@@ -334,7 +331,6 @@ async def handle_document(message: types.Message):
             else:
                 av_result_text = "🛡️ **Antivirus:** Fayl skanerdan o'tkazildi, tahdidlar topilmadi."
 
-        # 2. Read text content if it's a text/code file (.txt, .py, .html, .js, .json, etc.)
         file_content_summary = ""
         if file_name.lower().endswith(('.txt', '.py', '.html', '.js', '.json', '.md', '.css', '.csv', '.log', '.xml')):
             try:
@@ -342,11 +338,10 @@ async def handle_document(message: types.Message):
                 if len(text_content) > 4000:
                     text_content = text_content[:4000] + "\n...(fayl juda uzun bo'lgani uchun qisqartirildi)"
                 
-                # Using 3 models fallback mechanism for file content analysis too
                 models = [
                     "llama-3.3-70b-versatile",
                     "llama-3.1-8b-instant",
-                    "mixtral-8x7b-32768"
+                    "openai/gpt-oss-120b"
                 ]
                 
                 prompt = f"Quyidagi fayl ({file_name}) mazmunini tahlil qilib, nima haqida ekanligini tushuntirib ber:\n\n{text_content}"
@@ -378,7 +373,7 @@ async def handle_document(message: types.Message):
     except Exception as e:
         await message.answer(f"⚠️ Faylni qayta ishlashda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
 
-# --- TEXT CHAT WITH AI (USING 3 MODELS FALLBACK) ---
+# --- TEXT CHAT WITH AI (USING UPDATED MODELS) ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -406,11 +401,10 @@ async def chat_with_ai(message: types.Message):
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
-    # 3 ta sun'iy intellekt modeli (ketma-ketlikda ishlaydi: biri ishlamasa keyingisiga o'tadi)
     models = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768"
+        "openai/gpt-oss-120b"
     ]
 
     response_text = None
