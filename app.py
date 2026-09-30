@@ -24,13 +24,13 @@ def home():
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
-# Tokenlar va kalitlar (Hammasi yashirin holatda olinadi)
+# Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Telegram ID ni ham yashirin muhitdan o'qiymiz (agar topilmasa xavfsizlik uchun 0 bo'ladi)
+# Admin ID ni muhit o'zgaruvchisidan o'qimiz (Render sozlamalariga ADMIN_ID yozib qo'yilishi shart)
 admin_env = os.getenv("ADMIN_ID")
 ADMIN_ID = int(admin_env) if admin_env else 0  
 
@@ -76,6 +76,14 @@ def remove_verified_user(user_id: int):
     conn.commit()
     conn.close()
 
+def get_all_users():
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id, email FROM verified_users')
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
 # Foydalanuvchi holatlari (FSM)
 class AuthState(StatesGroup):
     waiting_for_email = State()
@@ -113,15 +121,22 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# Qo'shimcha /db buyrug'i
-@dp.message(Command("db"))
-async def send_database_file(message: types.Message):
+# --- FAQAT ADMIN UCHUN /users BUYRUĞI ---
+@dp.message(Command("users"))
+async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
+        return  # Boshqa foydalanuvchilar uchun umuman javob bermaydi (sir saqlanadi)
+    
+    users = get_all_users()
+    if not users:
+        await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q.")
         return
     
-    if os.path.exists('bot_database.db'):
-        db_file = FSInputFile('bot_database.db')
-        await message.answer_document(db_file, caption="📂 Joriy baza fayli:")
+    text = "📋 **Tizimdagi barcha foydalanuvchilar:**\n\n"
+    for idx, (uid, email) in enumerate(users, 1):
+        text += f"{idx}. ID: `{uid}`\n   📧 Email: `{email}`\n\n"
+    
+    await message.answer(text, parse_mode="Markdown")
 
 # Emailni qabul qilish
 @dp.message(AuthState.waiting_for_email, F.text)
@@ -159,7 +174,7 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
-# Kodni tekshirish va ADMIN ga JONLI baza yuborish
+# Kodni tekshirish va ADMIN ga jonli xabar yuborish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -173,15 +188,14 @@ async def process_code(message: types.Message, state: FSMContext):
         add_verified_user(user_id, email)
         
         try:
-            if ADMIN_ID and os.path.exists('bot_database.db'):
-                db_file = FSInputFile('bot_database.db')
-                await bot.send_document(
+            if ADMIN_ID:
+                await bot.send_message(
                     chat_id=ADMIN_ID,
-                    document=db_file,
-                    caption=f"⚡ **JONLI YANGILANISH!**\n\n"
-                            f"🟢 Yangi foydalanuvchi kirdi:\n"
-                            f"👤 ID: `{user_id}`\n"
-                            f"📧 Email: `{email}`"
+                    text=f"⚡ **JONLI YANGILANISH!**\n\n"
+                         f"🟢 Yangi foydalanuvchi kirdi:\n"
+                         f"👤 ID: `{user_id}`\n"
+                         f"📧 Email: `{email}`",
+                    parse_mode="Markdown"
                 )
         except Exception as e:
             print(f"Adminni ogohlantirishda xato: {e}")
@@ -220,14 +234,13 @@ async def logout_user(message: types.Message, state: FSMContext):
     await state.clear()
     
     try:
-        if ADMIN_ID and os.path.exists('bot_database.db'):
-            db_file = FSInputFile('bot_database.db')
-            await bot.send_document(
+        if ADMIN_ID:
+            await bot.send_message(
                 chat_id=ADMIN_ID,
-                document=db_file,
-                caption=f"⚡ **JONLI YANGILANISH!**\n\n"
-                        f"🔴 Foydalanuvchi tizimdan chiqdi:\n"
-                        f"👤 ID: `{user_id}`"
+                text=f"⚡ **JONLI YANGILANISH!**\n\n"
+                     f"🔴 Foydalanuvchi tizimdan chiqdi:\n"
+                     f"👤 ID: `{user_id}`",
+                parse_mode="Markdown"
             )
     except Exception as e:
         print(e)
@@ -288,7 +301,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot xavfsiz rejimda ishga tushdi...")
+    print("Bot /users buyrug'i bilan ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
