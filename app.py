@@ -325,7 +325,7 @@ def check_url_virustotal(url: str) -> str:
     except Exception as e:
         return f"⚠ Xatolik yuz berdi: {str(e)}"
 
-# Groq AI va Antivirus tutib qolish funksiyasi (Siz bergan 3 ta model bilan)
+# Groq AI va Antivirus funksiyasi (Barcha asosiy ishlaydigan modellar ro'yxati bilan)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -355,11 +355,14 @@ async def chat_with_ai(message: types.Message):
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
-    # Siz taqdim etgan aniq 3 ta model
+    # Barcha ishonchli va ishlaydigan modellar ro'yxati
     models = [
         'llama-3.3-70b-versatile',
         'llama-3.1-8b-instant',
-        'openai/gpt-oss-120b'
+        'gemma2-9b-it',
+        'mixtral-8x7b-32768',
+        'llama3-70b-8192',
+        'llama3-8b-8192'
     ]
 
     response_text = None
@@ -383,7 +386,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot Brevo API, Antibot, Antivirus va 3 ta model rejimida ishga tushdi...")
+    print("Bot Brevo API, Antibot, Antivirus va barcha modellar rejimida ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
