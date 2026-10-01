@@ -11,7 +11,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from groq import Groq
 from flask import Flask
 from threading import Thread
@@ -31,7 +31,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")     
-VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY") # Antivirus (VirusTotal) kaliti
+VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
 # Admin ID ni muhit o'zgaruvchisidan o'qiymiz
 admin_env = os.getenv("ADMIN_ID")
@@ -89,7 +89,7 @@ def get_all_users():
 
 # Foydalanuvchi holatlari (FSM)
 class AuthState(StatesGroup):
-    waiting_for_antibot = State() # Antibot bosqichi
+    waiting_for_antibot = State() 
     waiting_for_email = State()
     waiting_for_code = State()
     authenticated = State()
@@ -105,7 +105,7 @@ def get_chat_keyboard():
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)
 
-# /start buyrug'i (Antibot tekshiruvidan boshlanadi)
+# /start buyrug'i
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -118,7 +118,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await state.set_state(AuthState.authenticated)
         return
 
-    # Antibot uchun matematika misoli yaratamiz (Masalan: 5 + 3 = ?)
     num1 = random.randint(1, 10)
     num2 = random.randint(1, 10)
     correct_answer = num1 + num2
@@ -134,7 +133,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_antibot)
 
-# --- ANTIBOTNI TEKSHIRISH ---
+# Antibot tekshiruvi
 @dp.message(AuthState.waiting_for_antibot, F.text)
 async def process_antibot(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -152,7 +151,6 @@ async def process_antibot(message: types.Message, state: FSMContext):
         )
         await state.set_state(AuthState.waiting_for_email)
     else:
-        # Xato bo'lsa yangi misol beramiz
         num1 = random.randint(1, 10)
         num2 = random.randint(1, 10)
         antibot_questions[user_id] = str(num1 + num2)
@@ -161,7 +159,7 @@ async def process_antibot(message: types.Message, state: FSMContext):
             parse_mode="Markdown"
         )
 
-# --- FAQAT ADMIN UCHUN /users BUYRUĞI ---
+# Admin uchun /users buyrug'i
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -178,7 +176,23 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# Emailni qabul qilish va Gmail SMTP orqali kod yuborish
+# Sinxron xat yuborish funksiyasi
+def send_email_sync(sender, password, recipient, code):
+    msg = MIMEMultipart()
+    msg['From'] = sender
+    msg['To'] = recipient
+    msg['Subject'] = "AURAgpt - Tasdiqlash kodi"
+    
+    body = f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
+    msg.attach(MIMEText(body, 'plain'))
+
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login(sender, password)
+    server.sendmail(sender, recipient, msg.as_string())
+    server.quit()
+
+# Emailni qabul qilish va Gmail orqali kod yuborish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -191,25 +205,15 @@ async def process_email(message: types.Message, state: FSMContext):
     verification_codes[message.from_user.id] = code
 
     try:
-        msg = MIMEMultipart()
-        msg['From'] = SENDER_EMAIL
-        msg['To'] = email
-        msg['Subject'] = "AURAgpt - Tasdiqlash kodi"
+        # Asinxron tarzda SMTP orqali xat jo'natamiz
+        await asyncio.to_thread(send_email_sync, SENDER_EMAIL, MAIL_PASSWORD, email, code)
         
-        body = f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
-        msg.attach(MIMEText(body, 'plain'))
-
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(SENDER_EMAIL, MAIL_PASSWORD)
-        server.sendmail(SENDER_EMAIL, email, msg.as_string())
-        server.quit()
-
         await state.update_data(email=email)
         await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
         await state.set_state(AuthState.waiting_for_code)
     except Exception as e:
-        await message.answer(f"⚠ Xat yuborishda xatolik yuz berdi: {str(e)}")
+        # Xatolik chiqsa, aniq sababini foydalanuvchiga chiqaramiz
+        await message.answer(f"⚠ Xat yuborishda xatolik yuz berdi:\n`{str(e)}`\n\nRender muhitida `SENDER_EMAIL` va `MAIL_PASSWORD` (App Password) to'g'ri kiritilganligini tekshiring.", parse_mode="Markdown")
 
 # Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
@@ -229,13 +233,13 @@ async def process_code(message: types.Message, state: FSMContext):
                 await bot.send_message(
                     chat_id=ADMIN_ID,
                     text=f"⚡ **JONLI XABARNOMA!**\n\n"
-                         f"🟢 Yangi foydalanuvchi kirdi (Antibotdan o'tdi):\n"
+                         f"🟢 Yangi foydalanuvchi kirdi:\n"
                          f"👤 ID: `{user_id}`\n"
                          f"📧 Email: `{email}`",
                     parse_mode="Markdown"
                 )
         except Exception as e:
-            print(f"Adminni ogohlantirishda xato: {e}")
+            print(e)
         
         user_histories[user_id] = [
             {
@@ -276,34 +280,27 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# --- ANTIVIRUS TUGMASI BOSILGANDA ---
+# Antivirus tugmasi
 @dp.message(AuthState.authenticated, F.text == "🛡 Havola/Faylni tekshirish (Antivirus)")
 async def antivirus_info(message: types.Message):
     await message.answer(
         "🛡 **Antivirus Rejimi (VirusTotal):**\n\n"
-        "Menga istalgan veb-sayt havolasini (URL) yuboring, men uni VirusTotal bazasi orqali zararli dasturlar, fishing yoki viruslarga tekshirib beraman!",
+        "Menga istalgan veb-sayt havolasini (URL) yuboring, men uni VirusTotal bazasi orqali zararli dasturlar yoki fishingga tekshirib beraman!",
         reply_markup=get_chat_keyboard()
     )
 
-# --- ANTIVIRUS / URL TEKSHIRISH FUNKSIYASI ---
+# VirusTotal orqali havolani tekshirish
 def check_url_virustotal(url: str) -> str:
     if not VIRUSTOTAL_API_KEY:
         return "⚠ VirusTotal API kaliti sozlanmagan (`VIRUSTOTAL_API_KEY` ni Render'ga kiriting)."
-    
     try:
-        # VirusTotal API v3 orqali URL'ni tekshirish uchun yuborish
         headers = {"x-apikey": VIRUSTOTAL_API_KEY}
         response = requests.post("https://www.virustotal.com/api/v3/urls", data={"url": url}, headers=headers)
-        
         if response.status_code != 200:
             return "❌ Havolani tahlil qilishda xatolik yuz berdi."
-            
         analysis_id = response.json().get("data", {}).get("id")
-        
-        # Natijani olish uchunso'rov (Analysis ID orqali)
         report_url = f"https://www.virustotal.com/api/v3/analyses/{analysis_id}"
         report_resp = requests.get(report_url, headers=headers)
-        
         if report_resp.status_code == 200:
             stats = report_resp.json().get("data", {}).get("attributes", {}).get("stats", {})
             malicious = stats.get("malicious", 0)
@@ -329,20 +326,18 @@ def check_url_virustotal(url: str) -> str:
     except Exception as e:
         return f"⚠ Xatolik yuz berdi: {str(e)}"
 
-# Groq AI bilan muloqot va Havolalarni Antivirus orqali tutib qolish
+# Groq AI va Antivirus tutib qolish funksiyasi
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
     text = message.text.strip()
     
-    # Agar foydalanuvchi havola (URL) yuborsa, avtomatik Antivirus ishga tushadi
     if text.startswith("http://") or text.startswith("https://") or "www." in text:
         await message.answer("🔍 Havola aniqlandi. Antivirus (VirusTotal) orqali tekshirilmoqda...")
         scan_result = check_url_virustotal(text)
         await message.answer(scan_result, reply_markup=get_chat_keyboard(), parse_mode="Markdown")
         return
 
-    # Oddiy matn bo'lsa Groq AI ga yuboramiz
     if user_id not in user_histories:
         user_histories[user_id] = [
             {
