@@ -27,9 +27,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Актуальная и стабильная модель
+# Модель, которая указана в вашем Groq Console
 MODELS_LIST = [
-    "llama-3.1-8b-instant"
+    "openai/gpt-oss-120b"
 ]
 
 admin_env = os.getenv("ADMIN_ID")
