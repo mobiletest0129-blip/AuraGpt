@@ -27,15 +27,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Yalnızca aktif ve kararlı modeller
+# Актуальная и стабильная модель
 MODELS_LIST = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-70b-versatile",
-    "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
-    "qwen-2.5-32b",
-    "qwen-2.5-72b-instruct",
-    "deepseek-r1-distill-llama-70b"
+    "llama-3.1-8b-instant"
 ]
 
 admin_env = os.getenv("ADMIN_ID")
