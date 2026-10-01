@@ -29,10 +29,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Model nomlari
+# Актуальная модель Groq
 MODELS_LIST = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant"
+    "llama-3.3-70b-versatile"
 ]
 
 # Admin ID
@@ -290,7 +289,6 @@ async def chat_with_ai(message: types.Message):
         user_histories[user_id].append({"role": "assistant", "content": response_text})
         await message.answer(response_text, reply_markup=get_chat_keyboard())
     else:
-        # Aniq xatolik matnini chatga chiqaramiz
         await message.answer(f"⚠ Xatolik tafsiloti:\n`{last_error}`", parse_mode="Markdown", reply_markup=get_chat_keyboard())
 
 async def main():
