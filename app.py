@@ -2,7 +2,9 @@ import asyncio
 import random
 import os
 import sqlite3
-import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -26,8 +28,8 @@ def run_flask():
 # Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")       # Sizning Gmail pochtangiz
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")     # Google App Password (16 xonali parol)
 
 # Admin ID ni muhit o'zgaruvchisidan o'qiymiz
 admin_env = os.getenv("ADMIN_ID")
@@ -124,7 +126,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        return  # Boshqa foydalanuvchilar uchun javob bermaydi
+        return  
     
     users = get_all_users()
     if not users:
@@ -137,7 +139,7 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# Emailni qabul qilish
+# Emailni qabul qilish va Gmail SMTP orqali kod yuborish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -149,31 +151,29 @@ async def process_email(message: types.Message, state: FSMContext):
     code = str(random.randint(100000, 999999))
     verification_codes[message.from_user.id] = code
 
-    url = "https://api.brevo.com/v3/smtp/email"
-    headers = {
-        "accept": "application/json",
-        "api-key": BREVO_API_KEY,
-        "content-type": "application/json"
-    }
-    payload = {
-        "sender": {"name": "AURAgpt Bot", "email": SENDER_EMAIL},
-        "to": [{"email": email}],
-        "subject": "AURAgpt - Tasdiqlash kodi",
-        "textContent": f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
-    }
-
     try:
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code in [200, 201, 202]:
-            await state.update_data(email=email)
-            await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
-            await state.set_state(AuthState.waiting_for_code)
-        else:
-            await message.answer(f"⚠ Xatolik (Brevo): {response.text}")
-    except Exception as e:
-        await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
+        # Gmail SMTP orqali xat jo'natish
+        msg = MIMEMultipart()
+        msg['From'] = SENDER_EMAIL
+        msg['To'] = email
+        msg['Subject'] = "AURAgpt - Tasdiqlash kodi"
+        
+        body = f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
+        msg.attach(MIMEText(body, 'plain'))
 
-# Kodni tekshirish va ADMINGA faqat matnli xabar yuborish
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(SENDER_EMAIL, MAIL_PASSWORD)
+        server.sendmail(SENDER_EMAIL, email, msg.as_string())
+        server.quit()
+
+        await state.update_data(email=email)
+        await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
+        await state.set_state(AuthState.waiting_for_code)
+    except Exception as e:
+        await message.answer(f"⚠ Xat yuborishda xatolik yuz berdi: {str(e)}")
+
+# Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -219,7 +219,7 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Chiqish tugmasi va ADMINGA faqat matnli xabar
+# Chiqish tugmasi
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -276,7 +276,7 @@ async def chat_with_ai(message: types.Message):
     models = [
         "llama-3.1-8b-instant",
         "llama-3.3-70b-versatile",
-        "openai/gpt-oss-120b"
+        "gemma2-9b-it"
     ]
 
     response_text = None
@@ -300,7 +300,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot faylsiz, toza rejimda ishga tushdi...")
+    print("Bot Gmail SMTP rejimida ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
