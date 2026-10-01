@@ -1,4 +1,4 @@
-aiogram
+pyTelegramBotAPI
 groq
-flask
 requests
+flask
