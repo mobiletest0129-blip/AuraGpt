@@ -29,9 +29,12 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Актуальная модель Groq
+# Стабильные модели Groq для перебора
 MODELS_LIST = [
-    "llama-3.3-70b-versatile"
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it"
 ]
 
 # Admin ID
