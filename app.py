@@ -13,7 +13,7 @@ from groq import Groq
 from flask import Flask
 from threading import Thread
 
-# Render port talabini qondirish uchun Flask server
+# Render port talabini qondirish uchun kichik Flask server
 app_flask = Flask('')
 
 @app_flask.route('/')
@@ -29,21 +29,16 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Model nomlari to'g'ridan-to'g'ri kodning o'zida yozildi
-MODELS_LIST = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant"
-]
-
-# Admin ID
+# Admin ID ni muhit o'zgaruvchisidan o'qiymiz
 admin_env = os.getenv("ADMIN_ID")
 ADMIN_ID = int(admin_env) if admin_env else 0  
 
+# Bot va Groq sozlamalari
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- SQLITE BAZA ---
+# --- SQLITE BAZA BILAN ISHLASH ---
 def init_db():
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
@@ -88,6 +83,7 @@ def get_all_users():
     conn.close()
     return rows
 
+# Foydalanuvchi holatlari (FSM)
 class AuthState(StatesGroup):
     waiting_for_email = State()
     waiting_for_code = State()
@@ -102,6 +98,7 @@ def get_chat_keyboard():
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)
 
+# /start buyrug'i
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -123,10 +120,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
+# --- FAQAT ADMIN UCHUN /users BUYRUĞI ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        return  
+        return  # Boshqa foydalanuvchilar uchun javob bermaydi
     
     users = get_all_users()
     if not users:
@@ -139,6 +137,7 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
+# Emailni qabul qilish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -174,6 +173,7 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
+# Kodni tekshirish va ADMINGA faqat matnli xabar yuborish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -219,6 +219,7 @@ async def process_code(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
+# Chiqish tugmasi va ADMINGA faqat matnli xabar
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -249,6 +250,7 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
+# Groq AI bilan muloqot
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -271,8 +273,14 @@ async def chat_with_ai(message: types.Message):
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
+    models = [
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b"
+    ]
+
     response_text = None
-    for model_name in MODELS_LIST:
+    for model_name in models:
         try:
             completion = groq_client.chat.completions.create(
                 model=model_name,
@@ -292,7 +300,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot muvaffaqiyatli ishga tushdi!")
+    print("Bot faylsiz, toza rejimda ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
