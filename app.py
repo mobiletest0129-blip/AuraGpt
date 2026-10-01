@@ -2,10 +2,7 @@ import asyncio
 import random
 import os
 import sqlite3
-import smtplib
 import requests
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -16,12 +13,12 @@ from groq import Groq
 from flask import Flask
 from threading import Thread
 
-# Render port talabini qondirish uchun kichik Flask server
+# Render port talabini qondirish uchun Flask server
 app_flask = Flask('')
 
 @app_flask.route('/')
 def home():
-    return "AURAgpt Bot is active!"
+    return "AURAgpt Bot is active with Brevo API!"
 
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -29,8 +26,8 @@ def run_flask():
 # Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")     
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")       # Brevo'da tasdiqlangan pochtangiz
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")     # Brevo API kaliti
 VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
 # Admin ID ni muhit o'zgaruvchisidan o'qiymiz
@@ -176,23 +173,27 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# Sinxron xat yuborish funksiyasi
-def send_email_sync(sender, password, recipient, code):
-    msg = MIMEMultipart()
-    msg['From'] = sender
-    msg['To'] = recipient
-    msg['Subject'] = "AURAgpt - Tasdiqlash kodi"
+# Brevo API orqali xat yuborish funksiyasi
+def send_email_via_brevo(sender_email, recipient_email, code):
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"email": sender_email, "name": "AURAgpt Bot"},
+        "to": [{"email": recipient_email}],
+        "subject": "AURAgpt - Tasdiqlash kodi",
+        "htmlContent": f"<html><body><h3>Sizning AURAgpt boti uchun tasdiqlash kodingiz:</h3><h1 style='color:blue;'>{code}</h1></body></html>"
+    }
     
-    body = f"Sizning AURAgpt boti uchun tasdiqlash kodingiz: {code}"
-    msg.attach(MIMEText(body, 'plain'))
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code not in [200, 201, 202]:
+        raise Exception(f"Brevo API xatolik kodi: {response.status_code}, Javob: {response.text}")
+    return True
 
-    server = smtplib.SMTP('smtp.gmail.com', 587)
-    server.starttls()
-    server.login(sender, password)
-    server.sendmail(sender, recipient, msg.as_string())
-    server.quit()
-
-# Emailni qabul qilish va Gmail orqali kod yuborish
+# Emailni qabul qilish va Brevo API orqali kod yuborish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -205,15 +206,14 @@ async def process_email(message: types.Message, state: FSMContext):
     verification_codes[message.from_user.id] = code
 
     try:
-        # Asinxron tarzda SMTP orqali xat jo'natamiz
-        await asyncio.to_thread(send_email_sync, SENDER_EMAIL, MAIL_PASSWORD, email, code)
+        # Brevo API orqali xat yuborish (bloklanmaydi)
+        await asyncio.to_thread(send_email_via_brevo, SENDER_EMAIL, email, code)
         
         await state.update_data(email=email)
         await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
         await state.set_state(AuthState.waiting_for_code)
     except Exception as e:
-        # Xatolik chiqsa, aniq sababini foydalanuvchiga chiqaramiz
-        await message.answer(f"⚠ Xat yuborishda xatolik yuz berdi:\n`{str(e)}`\n\nRender muhitida `SENDER_EMAIL` va `MAIL_PASSWORD` (App Password) to'g'ri kiritilganligini tekshiring.", parse_mode="Markdown")
+        await message.answer(f"⚠ Xat yuborishda xatolik yuz berdi:\n`{str(e)}`\n\nRender muhitida `BREVO_API_KEY` va `SENDER_EMAIL` to'g'ri kiritilganligini tekshiring.", parse_mode="Markdown")
 
 # Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
@@ -383,7 +383,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot Gmail SMTP, Antibot va Antivirus (VirusTotal) rejimida ishga tushdi...")
+    print("Bot Brevo API, Antibot va Antivirus (VirusTotal) rejimida ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
