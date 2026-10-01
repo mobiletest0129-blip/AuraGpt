@@ -1,4 +1,5 @@
-pyTelegramBotAPI
+aiogram
 groq
 requests
 flask
+pydantic
