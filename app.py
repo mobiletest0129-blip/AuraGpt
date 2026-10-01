@@ -27,7 +27,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Модель, которая указана в вашем Groq Console
+# Groq Console da ko'rsatilgan model
 MODELS_LIST = [
     "openai/gpt-oss-120b"
 ]
@@ -103,17 +103,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     if is_user_verified(user_id):
         await message.answer(
-            "✅ Siz allaqachon tizimdasiz. Menga istalgan tilda istalgan savolingizni yuborishingiz mumkin!",
+            "✅ Siz allaqachon tizimdasiz! Menga istalgan tilda qiziqarli savollaringizni yuborishingiz mumkin! 🚀✨",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
         return
 
     await message.answer(
-        "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
-        "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yasaganlar! 💻✨\n\n"
-        "🌐 Men 200 dan ortiq tillarda muloqot qila olaman.\n\n"
-        "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
+        "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman! 🌟\n"
+        "Meni juda iste'dodli dasturchi **Bunyodbek Zokirov** yaratganlar! 💻🔥✨\n\n"
+        "🌐 Men 200 dan ortiq tillarda mukammal muloqot qila olaman!\n\n"
+        "Botdan foydalanishni boshlash uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`): 📧👇",
         parse_mode="Markdown"
     )
     await state.set_state(AuthState.waiting_for_email)
@@ -125,10 +125,10 @@ async def show_users_list(message: types.Message):
     
     users = get_all_users()
     if not users:
-        await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q.")
+        await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q. 📭")
         return
     
-    text = "📋 **Tizimdagi barcha foydalanuvchilar:**\n\n"
+    text = "📋 **Tizimdagi barcha foydalanuvchilar:** 👥\n\n"
     for idx, (uid, email) in enumerate(users, 1):
         text += f"{idx}. ID: `{uid}`\n   📧 Email: `{email}`\n\n"
     
@@ -139,7 +139,7 @@ async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
     
     if not email.endswith("@gmail.com"):
-        await message.answer("⚠️ Iltimos, haqiqiy Gmail manzilini kiriting (masalan: `ismingiz@gmail.com`):")
+        await message.answer("⚠️ Iltimos, haqiqiy Gmail manzilini to'g'ri kiriting (masalan: `ismingiz@gmail.com`): 📩")
         return
 
     code = str(random.randint(100000, 999999))
@@ -162,12 +162,12 @@ async def process_email(message: types.Message, state: FSMContext):
         response = requests.post(url, json=payload, headers=headers)
         if response.status_code in [200, 201, 202]:
             await state.update_data(email=email)
-            await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
+            await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi! 🔑 Iltimos, kodni kiriting:", parse_mode="Markdown")
             await state.set_state(AuthState.waiting_for_code)
         else:
-            await message.answer(f"⚠ Xatolik (Brevo): {response.text}")
+            await message.answer(f"⚠️ Xatolik (Brevo): {response.text}")
     except Exception as e:
-        await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
+        await message.answer(f"⚠️ Tarmoq xatoligi yuz berdi: {str(e)}")
 
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
@@ -185,8 +185,8 @@ async def process_code(message: types.Message, state: FSMContext):
             if ADMIN_ID:
                 await bot.send_message(
                     chat_id=ADMIN_ID,
-                    text=f"⚡ **JONLI XABARNOMA!**\n\n"
-                         f"🟢 Yangi foydalanuvchi kirdi:\n"
+                    text=f"⚡ **JONLI XABARNOMA!** 🔔\n\n"
+                         f"🟢 Yangi foydalanuvchi kirdi: 🎉\n"
                          f"👤 ID: `{user_id}`\n"
                          f"📧 Email: `{email}`",
                     parse_mode="Markdown"
@@ -198,21 +198,21 @@ async def process_code(message: types.Message, state: FSMContext):
             {
                 "role": "system", 
                 "content": (
-                    "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
-                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
+                    "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
+                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini katta faxr va quvonch bilan ayt! 😎💻 "
                     "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
-                    "aynan o'sha tilda ravon va aniq javob berasan."
+                    "aynan o'sha tilda juda xushmuomala, iliq, ravon va aniq javob berasan. Har bir javobingda chiroyli va o'rinli smayliklardan (😊🔥🚀💡👍) faol foydalan!"
                 )
             }
         ]
         
         await message.answer(
-            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi istalgan tilda savollaringizni berishingiz mumkin!",
+            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi! ✅ Endi istalgan tilda o'zingizni qiziqtirgan savollarni berishingiz mumkin! 🚀💬",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
     else:
-        await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
+        await message.answer("❌ Noto'g'ri kod kiritdingiz! 🔄 Iltimos, pochtangizga kelgan kodni qaytadan tekshirib kiriting: 📩")
 
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
@@ -230,8 +230,8 @@ async def logout_user(message: types.Message, state: FSMContext):
         if ADMIN_ID:
             await bot.send_message(
                 chat_id=ADMIN_ID,
-                text=f"⚡ **JONLI XABARNOMA!**\n\n"
-                     f"🔴 Foydalanuvchi tizimdan chiqdi:\n"
+                text=f"⚡ **JONLI XABARNOMA!** 🔔\n\n"
+                     f"🔴 Foydalanuvchi tizimdan chiqdi: 🚪\n"
                      f"👤 ID: `{user_id}`",
                 parse_mode="Markdown"
             )
@@ -239,8 +239,8 @@ async def logout_user(message: types.Message, state: FSMContext):
         print(e)
     
     await message.answer(
-        "🚪 Tizimdan muvaffaqiyatli chiqdingiz.\n"
-        "Qaytadan kirish uchun /start buyrug'ini bosing.",
+        "🚪 Tizimdan muvaffaqiyatli chiqdingiz! 👋\n"
+        "Qaytadan kirish uchun /start buyrug'ini bosing. ✨",
         reply_markup=types.ReplyKeyboardRemove()
     )
 
@@ -253,10 +253,10 @@ async def chat_with_ai(message: types.Message):
             {
                 "role": "system", 
                 "content": (
-                    "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
-                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
+                    "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
+                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini katta faxr va quvonch bilan ayt! 😎💻 "
                     "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
-                    "aynan o'sha tilda ravon va to'g'ri javob berasan."
+                    "aynan o'sha tilda juda xushmuomala, iliq, ravon va aniq javob berasan. Har bir javobingda chiroyli va o'rinli smayliklardan (😊🔥🚀💡👍) faol foydalan!"
                 )
             }
         ]
@@ -285,11 +285,11 @@ async def chat_with_ai(message: types.Message):
         user_histories[user_id].append({"role": "assistant", "content": response_text})
         await message.answer(response_text, reply_markup=get_chat_keyboard())
     else:
-        await message.answer(f"⚠ Xatolik tafsiloti:\n`{last_error}`", parse_mode="Markdown", reply_markup=get_chat_keyboard())
+        await message.answer(f"⚠️ Xatolik tafsiloti:\n`{last_error}`", parse_mode="Markdown", reply_markup=get_chat_keyboard())
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot muvaffaqiyatli ishga tushdi!")
+    print("Bot muvaffaqiyatli ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
