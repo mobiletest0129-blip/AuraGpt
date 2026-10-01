@@ -26,9 +26,16 @@ def run_flask():
 # Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")       # Brevo'da tasdiqlangan pochtangiz
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")     # Brevo API kaliti
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")     
 VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
+
+# Render'dan modellar ro'yxatini o'qiymiz (agar ko'rsatilmagan bo'lsa standartlari ishlatiladi)
+models_env = os.getenv("GROQ_MODELS")
+if models_env:
+    MODELS_LIST = [m.strip() for m in models_env.split(",")]
+else:
+    MODELS_LIST = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
 
 # Admin ID ni muhit o'zgaruvchisidan o'qiymiz
 admin_env = os.getenv("ADMIN_ID")
@@ -190,7 +197,7 @@ def send_email_via_brevo(sender_email, recipient_email, code):
     
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code not in [200, 201, 202]:
-        raise Exception(f"Brevo API xatolik kodi: {response.status_code}, Javob: {response.text}")
+        raise Exception(f"Brevo API xatolik kodi: {response.status_code}")
     return True
 
 # Emailni qabul qilish va Brevo API orqali kod yuborish
@@ -212,7 +219,7 @@ async def process_email(message: types.Message, state: FSMContext):
         await message.answer(f"📩 **{email}** manziliga 6 xonali tasdiqlash kodi yuborildi. Iltimos, kodni kiriting:", parse_mode="Markdown")
         await state.set_state(AuthState.waiting_for_code)
     except Exception as e:
-        await message.answer(f"⚠ Xat yuborishda xatolik yuz berdi:\n`{str(e)}`\n\nRender muhitida `BREVO_API_KEY` va `SENDER_EMAIL` to'g'ri kiritilganligini tekshiring.", parse_mode="Markdown")
+        await message.answer(f"⚠ Xat yuborishda xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.", parse_mode="Markdown")
 
 # Kodni tekshirish
 @dp.message(AuthState.waiting_for_code, F.text)
@@ -238,7 +245,7 @@ async def process_code(message: types.Message, state: FSMContext):
                     parse_mode="Markdown"
                 )
         except Exception as e:
-            print(e)
+            pass
         
         user_histories[user_id] = [
             {
@@ -247,7 +254,7 @@ async def process_code(message: types.Message, state: FSMContext):
                     "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
                     "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
                     "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
-                    "aynan o'sha tilda ravon va aniq javob berasan."
+                    "aynan o'sha tilda ravon va to'g'ri javob berasan."
                 )
             }
         ]
@@ -291,7 +298,7 @@ async def antivirus_info(message: types.Message):
 # VirusTotal orqali havolani tekshirish
 def check_url_virustotal(url: str) -> str:
     if not VIRUSTOTAL_API_KEY:
-        return "⚠ VirusTotal API kaliti sozlanmagan (`VIRUSTOTAL_API_KEY` ni Render'ga kiriting)."
+        return "⚠ VirusTotal API kaliti sozlanmagan."
     try:
         headers = {"x-apikey": VIRUSTOTAL_API_KEY}
         response = requests.post("https://www.virustotal.com/api/v3/urls", data={"url": url}, headers=headers)
@@ -323,9 +330,9 @@ def check_url_virustotal(url: str) -> str:
         else:
             return "⏳ Tahlil natijasi tayyorlanmoqda, birozdan so'ng qayta urinib ko'ring."
     except Exception as e:
-        return f"⚠ Xatolik yuz berdi: {str(e)}"
+        return f"⚠ Xatolik yuz berdi."
 
-# Groq AI va Antivirus funksiyasi (Barcha asosiy ishlaydigan modellar ro'yxati bilan)
+# Groq AI funksiyasi (Model nomlari to'liq Render'dan o'qiladi, kodda ko'rinmaydi)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -355,18 +362,8 @@ async def chat_with_ai(message: types.Message):
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
-    # Barcha ishonchli va ishlaydigan modellar ro'yxati
-    models = [
-        'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'gemma2-9b-it',
-        'mixtral-8x7b-32768',
-        'llama3-70b-8192',
-        'llama3-8b-8192'
-    ]
-
     response_text = None
-    for model_name in models:
+    for model_name in MODELS_LIST:
         try:
             completion = groq_client.chat.completions.create(
                 model=model_name,
@@ -374,19 +371,18 @@ async def chat_with_ai(message: types.Message):
             )
             response_text = completion.choices[0].message.content
             break  
-        except Exception as e:
-            print(f"Model {model_name} xato berdi: {str(e)}")
+        except Exception:
             continue  
 
     if response_text:
         user_histories[user_id].append({"role": "assistant", "content": response_text})
         await message.answer(response_text, reply_markup=get_chat_keyboard())
     else:
-        await message.answer("⚠ Hozirda sun'iy intellekt modellariga ulanishda xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.", reply_markup=get_chat_keyboard())
+        await message.answer("⚠ Hozirda sun'iy intellektga ulanishda vaqtinchalik xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.", reply_markup=get_chat_keyboard())
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot Brevo API, Antibot, Antivirus va barcha modellar rejimida ishga tushdi...")
+    print("Bot muvaffaqiyatli ishga tushdi!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
