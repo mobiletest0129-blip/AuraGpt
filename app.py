@@ -206,7 +206,6 @@ async def process_email(message: types.Message, state: FSMContext):
     verification_codes[message.from_user.id] = code
 
     try:
-        # Brevo API orqali xat yuborish (bloklanmaydi)
         await asyncio.to_thread(send_email_via_brevo, SENDER_EMAIL, email, code)
         
         await state.update_data(email=email)
@@ -326,7 +325,7 @@ def check_url_virustotal(url: str) -> str:
     except Exception as e:
         return f"⚠ Xatolik yuz berdi: {str(e)}"
 
-# Groq AI va Antivirus tutib qolish funksiyasi
+# Groq AI va Antivirus tutib qolish funksiyasi (Siz bergan 3 ta model bilan)
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -356,10 +355,11 @@ async def chat_with_ai(message: types.Message):
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
+    # Siz taqdim etgan aniq 3 ta model
     models = [
-        "llama-3.1-8b-instant",
-        "llama-3.3-70b-versatile",
-        "gemma2-9b-it"
+        'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'openai/gpt-oss-120b'
     ]
 
     response_text = None
@@ -383,7 +383,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot Brevo API, Antibot va Antivirus (VirusTotal) rejimida ishga tushdi...")
+    print("Bot Brevo API, Antibot, Antivirus va 3 ta model rejimida ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
