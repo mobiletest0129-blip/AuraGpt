@@ -3,7 +3,6 @@ import random
 import os
 import sqlite3
 import requests
-import time
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -14,33 +13,32 @@ from groq import Groq
 from flask import Flask
 from threading import Thread
 
-# Flask server for Render port binding
+# Render port talabini qondirish uchun kichik Flask server
 app_flask = Flask('')
 
 @app_flask.route('/')
 def home():
-    return "AURAgpt Bot with Antivirus, File Reader & Active Models is running!"
+    return "AURAgpt Bot is active!"
 
 def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
-# Tokens and keys
+# Tokenlar va kalitlar
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
-VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
-# Admin ID
+# Admin ID ni muhit o'zgaruvchisidan o'qiymiz
 admin_env = os.getenv("ADMIN_ID")
 ADMIN_ID = int(admin_env) if admin_env else 0  
 
-# Bot and Groq setup
+# Bot va Groq sozlamalari
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- SQLITE DATABASE ---
+# --- SQLITE BAZA BILAN ISHLASH ---
 def init_db():
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
@@ -48,13 +46,6 @@ def init_db():
         CREATE TABLE IF NOT EXISTS verified_users (
             user_id INTEGER PRIMARY KEY,
             email TEXT
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS user_activity (
-            user_id INTEGER PRIMARY KEY,
-            last_time REAL,
-            warnings INTEGER DEFAULT 0
         )
     ''')
     conn.commit()
@@ -92,38 +83,7 @@ def get_all_users():
     conn.close()
     return rows
 
-# --- ANTIBOT & FLOOD PROTECTION ---
-def check_antibot(user_id: int) -> bool:
-    if user_id == ADMIN_ID:
-        return True
-    
-    conn = sqlite3.connect('bot_database.db')
-    cursor = conn.cursor()
-    now = time.time()
-    
-    cursor.execute('SELECT last_time, warnings FROM user_activity WHERE user_id = ?', (user_id,))
-    row = cursor.fetchone()
-    
-    if row:
-        last_time, warnings = row
-        if now - last_time < 1.0:
-            warnings += 1
-            cursor.execute('UPDATE user_activity SET last_time = ?, warnings = ? WHERE user_id = ?', (now, warnings, user_id))
-            conn.commit()
-            conn.close()
-            if warnings > 5:
-                return False
-        else:
-            cursor.execute('UPDATE user_activity SET last_time = ?, warnings = 0 WHERE user_id = ?', (now, user_id))
-            conn.commit()
-    else:
-        cursor.execute('INSERT INTO user_activity (user_id, last_time, warnings) VALUES (?, ?, 0)', (user_id, now))
-        conn.commit()
-        
-    conn.close()
-    return True
-
-# FSM States
+# Foydalanuvchi holatlari (FSM)
 class AuthState(StatesGroup):
     waiting_for_email = State()
     waiting_for_code = State()
@@ -138,18 +98,14 @@ def get_chat_keyboard():
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)
 
-# /start command
+# /start buyrug'i
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
-    if not check_antibot(user_id):
-        await message.answer("⚠️ Juda ko'p so'rov yubordingiz. Iltimos, biroz kuting (Antibot himoyasi).")
-        return
-
     if is_user_verified(user_id):
         await message.answer(
-            "✅ Siz allaqachon tizimdasiz. Menga matn yozishingiz yoki fayl yuborishingiz mumkin (Antivirus & Fayl tahlili faol)!",
+            "✅ Siz allaqachon tizimdasiz. Menga istalgan tilda istalgan savolingizni yuborishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
@@ -158,17 +114,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "🤖 **Assalomu alaykum!** Men **AURAgpt** sun'iy intellekt botiman.\n"
         "Meni iste'dodli dasturchi **Bunyodbek Zokirov** yasaganlar! 💻✨\n\n"
-        "🛡️ Men matnli savollarga javob beraman, yuborgan **fayllaringizni o'qib tahlil qilaman** va **antivirus tekshiruvini** bajaraman.\n\n"
+        "🌐 Men 200 dan ortiq tillarda muloqot qila olaman.\n\n"
         "Botdan foydalanish uchun iltimos, o'zingizning **haqiqiy Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`):",
         parse_mode="Markdown"
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- ADMIN /users COMMAND ---
+# --- FAQAT ADMIN UCHUN /users BUYRUĞI ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        return  
+        return  # Boshqa foydalanuvchilar uchun javob bermaydi
     
     users = get_all_users()
     if not users:
@@ -181,7 +137,7 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# Email processing
+# Emailni qabul qilish
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -217,7 +173,7 @@ async def process_email(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"⚠ Tarmoq xatoligi: {str(e)}")
 
-# Code verification
+# Kodni tekshirish va ADMINGA faqat matnli xabar yuborish
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
     user_code = message.text.strip()
@@ -256,14 +212,14 @@ async def process_code(message: types.Message, state: FSMContext):
         ]
         
         await message.answer(
-            "🎉 Tabriklayman! Pochta tasdiqlandi. Endi matn yuborishingiz yoki fayl tashlab tahlil/antivirus tekshiruvidan o'tkazishingiz mumkin!",
+            "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi. Endi istalgan tilda savollaringizni berishingiz mumkin!",
             reply_markup=get_chat_keyboard()
         )
         await state.set_state(AuthState.authenticated)
     else:
         await message.answer("❌ Noto'g'ri kod. Iltimos, pochtangizga kelgan kodni qaytadan kiriting:")
 
-# Logout
+# Chiqish tugmasi va ADMINGA faqat matnli xabar
 @dp.message(F.text == "🚪 Chiqish")
 async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -294,95 +250,11 @@ async def logout_user(message: types.Message, state: FSMContext):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-# --- FILE HANDLER (READ FILE & ANTIVIRUS CHECK) ---
-@dp.message(AuthState.authenticated, F.document)
-async def handle_document(message: types.Message):
-    user_id = message.from_user.id
-    if not check_antibot(user_id):
-        await message.answer("⚠️ Juda tez xabar yuboryapsiz. Iltimos, biroz kuting.")
-        return
-
-    document = message.document
-    file_name = document.file_name
-    file_size = document.file_size
-    
-    if file_size > 10 * 1024 * 1024:
-        await message.answer("⚠️ Fayl hajmi juda katta (10 MB dan oshmasligi kerak).", reply_markup=get_chat_keyboard())
-        return
-
-    await message.answer(f"📂 **{file_name}** qabul qilindi. Antivirus tekshiruvi va fayl tahlili bajarilmoqda...", parse_mode="Markdown", reply_markup=get_chat_keyboard())
-
-    try:
-        file = await bot.get_file(document.file_id)
-        file_path = file.file_path
-        downloaded_file = await bot.download_file(file_path)
-        
-        file_bytes = downloaded_file.read()
-        
-        av_result_text = "🛡️ **Antivirus tekshiruvi:** VirusTotal API kaliti topilmadi, lekin fayl tuzilishi xavfsiz ko'rinadi."
-        if VIRUSTOTAL_API_KEY:
-            vt_url = "https://www.virustotal.com/api/v3/files"
-            headers = {"x-apikey": VIRUSTOTAL_API_KEY}
-            files = {"file": (file_name, file_bytes)}
-            response = requests.post(vt_url, headers=headers, files=files)
-            if response.status_code == 200:
-                analysis_id = response.json().get("data", {}).get("id")
-                av_result_text = f"🛡️ **Antivirus (VirusTotal):** Fayl muvaffaqiyatli yuklandi va tekshirildi. Tahlil ID: `{analysis_id}`"
-            else:
-                av_result_text = "🛡️ **Antivirus:** Fayl skanerdan o'tkazildi, tahdidlar topilmadi."
-
-        file_content_summary = ""
-        if file_name.lower().endswith(('.txt', '.py', '.html', '.js', '.json', '.md', '.css', '.csv', '.log', '.xml')):
-            try:
-                text_content = file_bytes.decode('utf-8', errors='ignore')
-                if len(text_content) > 4000:
-                    text_content = text_content[:4000] + "\n...(fayl juda uzun bo'lgani uchun qisqartirildi)"
-                
-                models = [
-                    "llama-3.3-70b-versatile",
-                    "llama-3.1-8b-instant",
-                    "gemma2-9b-it"
-                ]
-                
-                prompt = f"Quyidagi fayl ({file_name}) mazmunini tahlil qilib, nima haqida ekanligini tushuntirib ber:\n\n{text_content}"
-                ai_analysis = None
-                
-                for model_name in models:
-                    try:
-                        completion = groq_client.chat.completions.create(
-                            model=model_name,
-                            messages=[{"role": "user", "content": prompt}]
-                        )
-                        ai_analysis = completion.choices[0].message.content
-                        break
-                    except Exception:
-                        continue
-                
-                if ai_analysis:
-                    file_content_summary = f"\n\n📖 **Fayl mazmuni tahlili (AI):**\n{ai_analysis}"
-                else:
-                    file_content_summary = "\n\n⚠️ Faylni AI yordamida tahlil qilishda barcha modellar xatolik berdi."
-            except Exception as ex:
-                file_content_summary = f"\n\n⚠️ Fayl matnini o'qishda xatolik: {str(ex)}"
-        else:
-            file_content_summary = "\n\n📖 **Fayl turi:** Bu matnli formatda emas, shuning uchun faqat antivirus va asosiy ma'lumotlar taqdim etildi."
-
-        final_response = f"✅ **Fayl tahlili yakunlandi!**\n\n📁 Nomi: `{file_name}`\n📊 Hajmi: `{file_size} bayt`\n\n{av_result_text}{file_content_summary}"
-        await message.answer(final_response, parse_mode="Markdown", reply_markup=get_chat_keyboard())
-
-    except Exception as e:
-        await message.answer(f"⚠️ Faylni qayta ishlashda xatolik yuz berdi: {str(e)}", reply_markup=get_chat_keyboard())
-
-# --- TEXT CHAT WITH AI (USING VALID 3 MODELS) ---
+# Groq AI bilan muloqot
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
-    if not check_antibot(user_id):
-        await message.answer("⚠️ Juda tez xabar yuboryapsiz. Iltimos, biroz kuting (Antibot himoyasi).")
-        return
-
-    text_input = message.text.strip()
-
+    
     if user_id not in user_histories:
         user_histories[user_id] = [
             {
@@ -391,20 +263,20 @@ async def chat_with_ai(message: types.Message):
                     "Sen AURAgpt nomli sun'iy intellekt botisan. Seni Bunyodbek Zokirov ismli dasturchi yasagan. "
                     "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini faxr bilan ayt. "
                     "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
-                    "aynan o'sha tilda ravon va aniq javob berasan."
+                    "aynan o'sha tilda ravon va to'g'ri javob berasan."
                 )
             }
         ]
 
-    user_histories[user_id].append({"role": "user", "content": text_input})
+    user_histories[user_id].append({"role": "user", "content": message.text})
     
     if len(user_histories[user_id]) > 21:
         user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
 
     models = [
-        "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
-        "gemma2-9b-it"
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b"
     ]
 
     response_text = None
@@ -428,7 +300,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot muvaffaqiyatli ishga tushdi...")
+    print("Bot faylsiz, toza rejimda ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
