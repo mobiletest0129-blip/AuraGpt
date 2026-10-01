@@ -42,10 +42,20 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 def init_db():
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
+    # Tasdiqlangan foydalanuvchilar jadvali
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS verified_users (
             user_id INTEGER PRIMARY KEY,
             email TEXT
+        )
+    ''')
+    # Chat tarixini bazada saqlash jadvali
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            role TEXT,
+            content TEXT
         )
     ''')
     conn.commit()
@@ -72,6 +82,8 @@ def remove_verified_user(user_id: int):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
     cursor.execute('DELETE FROM verified_users WHERE user_id = ?', (user_id,))
+    # Foydalanuvchi chiqib ketsa chat tarixini ham tozalash
+    cursor.execute('DELETE FROM chat_history WHERE user_id = ?', (user_id,))
     conn.commit()
     conn.close()
 
@@ -83,13 +95,58 @@ def get_all_users():
     conn.close()
     return rows
 
+# --- Bazadan chat tarixini boshqarish funksiyalari ---
+def get_user_history(user_id: int):
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT role, content FROM chat_history WHERE user_id = ?', (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Agar tarix bo'sh bo'lsa, system prompt ni qo'shib yaratamiz
+    if not rows:
+        system_content = (
+            "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
+            "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini katta faxr va quvonch bilan ayt! 😎💻 "
+            "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
+            "aynan o'sha tilda juda xushmuomala, iliq, ravon va aniq javob berasan. Har bir javobingda chiroyli va o'rinli smayliklardan (😊🔥🚀💡👍) faol foydalan!"
+        )
+        save_message_to_db(user_id, "system", system_content)
+        return [{"role": "system", "content": system_content}]
+    
+    history = [{"role": row[0], "content": row[1]} for row in rows]
+    return history
+
+def save_message_to_db(user_id: int, role: str, content: str):
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
+    conn.commit()
+    
+    # Tarix juda uzayib ketmasa uchun faqat oxirgi 21 ta xabarni saqlab qolamiz (system prompt + 20 ta xabar)
+    cursor.execute('SELECT COUNT(*) FROM chat_history WHERE user_id = ?', (user_id,))
+    count = cursor.fetchone()[0]
+    if count > 21:
+        # Eng birinchi xabardan keyingi eskirganlarini o'chiramiz (system prompt saqlanib qoladi)
+        cursor.execute('''
+            DELETE FROM chat_history 
+            WHERE id IN (
+                SELECT id FROM chat_history 
+                WHERE user_id = ? AND role != 'system' 
+                ORDER BY id ASC LIMIT 2
+            )
+        ''', (user_id,))
+        conn.commit()
+    conn.close()
+# ------------------------------------------------------
+
 class AuthState(StatesGroup):
     waiting_for_email = State()
     waiting_for_code = State()
     authenticated = State()
+    waiting_for_broadcast = State() # Broadcast uchun holat
 
 verification_codes = {}      
-user_histories = {}          
 
 def get_chat_keyboard():
     builder = ReplyKeyboardBuilder()
@@ -133,6 +190,48 @@ async def show_users_list(message: types.Message):
         text += f"{idx}. ID: `{uid}`\n   📧 Email: `{email}`\n\n"
     
     await message.answer(text, parse_mode="Markdown")
+
+# --- Broadcast (Xabar tarqatish) buyrug'i ---
+@dp.message(Command("broadcast"))
+async def cmd_broadcast(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    await message.answer(
+        "📢 **Xabar tarqatish rejimi:**\n\n"
+        "Barcha foydalanuvchilarga yubormoqchi bo'lgan xabaringizni (matn, rasm yoki post) yuboring:",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AuthState.waiting_for_broadcast)
+
+@dp.message(AuthState.waiting_for_broadcast)
+async def process_broadcast(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    users = get_all_users()
+    success_count = 0
+    fail_count = 0
+    
+    status_msg = await message.answer("⏳ Xabarlar tarqatilmoqda, iltimos kuting...")
+    
+    for uid, _ in users:
+        try:
+            # Admin yuborgan xabarni nusxalab foydalanuvchiga yuboramiz
+            await message.send_copy(chat_id=uid)
+            success_count += 1
+            await asyncio.sleep(0.05) # Telegram limitlariga tushib qolmaslik uchun kichik tanaffus
+        except Exception:
+            fail_count += 1
+            
+    await status_msg.edit_text(
+        f"✅ **Xabar tarqatish yakunlandi!** 🚀\n\n"
+        f"👥 Muvaffaqiyatli yuborildi: {success_count} ta\n"
+        f"⚠️ Xatolik yuz berdi: {fail_count} ta",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AuthState.authenticated)
+# ---------------------------------------------
 
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
@@ -194,17 +293,8 @@ async def process_code(message: types.Message, state: FSMContext):
         except Exception as e:
             print(f"Adminni ogohlantirishda xato: {e}")
         
-        user_histories[user_id] = [
-            {
-                "role": "system", 
-                "content": (
-                    "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
-                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini katta faxr va quvonch bilan ayt! 😎💻 "
-                    "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
-                    "aynan o'sha tilda juda xushmuomala, iliq, ravon va aniq javob berasan. Har bir javobingda chiroyli va o'rinli smayliklardan (😊🔥🚀💡👍) faol foydalan!"
-                )
-            }
-        ]
+        # Bazada yangi foydalanuvchi uchun tarixni tayyorlaymiz
+        get_user_history(user_id)
         
         await message.answer(
             "🎉 Tabriklayman! Pochta muvaffaqiyatli tasdiqlandi! ✅ Endi istalgan tilda o'zingizni qiziqtirgan savollarni berishingiz mumkin! 🚀💬",
@@ -219,8 +309,6 @@ async def logout_user(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     remove_verified_user(user_id)
     
-    if user_id in user_histories:
-        del user_histories[user_id]
     if user_id in verification_codes:
         del verification_codes[user_id]
         
@@ -248,23 +336,11 @@ async def logout_user(message: types.Message, state: FSMContext):
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
     
-    if user_id not in user_histories:
-        user_histories[user_id] = [
-            {
-                "role": "system", 
-                "content": (
-                    "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
-                    "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini katta faxr va quvonch bilan ayt! 😎💻 "
-                    "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
-                    "aynan o'sha tilda juda xushmuomala, iliq, ravon va aniq javob berasan. Har bir javobingda chiroyli va o'rinli smayliklardan (😊🔥🚀💡👍) faol foydalan!"
-                )
-            }
-        ]
-
-    user_histories[user_id].append({"role": "user", "content": message.text})
+    # Foydalanuvchi xabarini bazaga yozamiz
+    save_message_to_db(user_id, "user", message.text)
     
-    if len(user_histories[user_id]) > 21:
-        user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
+    # Bazadan to'liq suhbat tarixini olib kelamiz
+    current_history = get_user_history(user_id)
 
     response_text = None
     last_error = ""
@@ -272,7 +348,7 @@ async def chat_with_ai(message: types.Message):
         try:
             completion = groq_client.chat.completions.create(
                 model=model_name,
-                messages=user_histories[user_id]
+                messages=current_history
             )
             response_text = completion.choices[0].message.content
             break  
@@ -282,7 +358,8 @@ async def chat_with_ai(message: types.Message):
             continue  
 
     if response_text:
-        user_histories[user_id].append({"role": "assistant", "content": response_text})
+        # AI javobini ham bazaga yozamiz
+        save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=get_chat_keyboard())
     else:
         await message.answer(f"⚠️ Xatolik tafsiloti:\n`{last_error}`", parse_mode="Markdown", reply_markup=get_chat_keyboard())
