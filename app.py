@@ -202,7 +202,7 @@ async def show_users_list(message: types.Message):
     
     for idx, (uid, email, violations, is_banned) in enumerate(users, 1):
         status_text = "🔴 Bloklangan" if is_banned else "🟢 Faol"
-        text += f"{idx}. ID: `{uid}`\n   📧 Email: `{email}`\n   ⚠️️ Qoidabuzarlik: {violations} ta | Status: {status_text}\n\n"
+        text += f"{idx}. ID: `{uid}`\n   📧 Email: `{email}`\n   ⚠️ Qoidabuzarlik: {violations} ta | Status: {status_text}\n\n"
         
         if is_banned == 0:
             builder.button(text=f"🚫 Ban: {uid}", callback_data=f"ban_{uid}")
@@ -370,9 +370,14 @@ async def process_code(message: types.Message, state: FSMContext):
         )
         await state.set_state(AuthState.authenticated)
     else:
+        # Kod xato kiritilsa bazada qoidabuzarliklar sonini 1 taga oshiramiz
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('UPDATE verified_users SET violations = violations + 1 WHERE user_id = %s', (user_id,))
+        cursor.execute('''
+            INSERT INTO verified_users (user_id, email, violations, is_banned) 
+            VALUES (%s, 'Noma\'lum', 1, 0)
+            ON CONFLICT (user_id) DO UPDATE SET violations = verified_users.violations + 1
+        ''', (user_id,))
         conn.commit()
         cursor.close()
         conn.close()
