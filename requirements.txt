@@ -3,3 +3,4 @@ groq
 requests
 flask
 pydantic
+psycopg2-binary
