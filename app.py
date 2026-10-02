@@ -26,7 +26,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
-DATABASE_URL = os.getenv("DATABASE_URL") # Render yoki boshqa hosting taqdim etadigan PostgreSQL ulanish manzili
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 MODELS_LIST = [
     "openai/gpt-oss-120b"
@@ -41,14 +41,12 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 # --- PostgreSQL Ma'lumotlar bazasini ulash va yaratish ---
 def get_db_connection():
-    # PostgreSQL bazasiga ulanish
     conn = psycopg2.connect(DATABASE_URL, sslmode='require')
     return conn
 
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Tasdiqlangan foydalanuvchilar jadvali
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS verified_users (
             user_id BIGINT PRIMARY KEY,
@@ -57,7 +55,6 @@ def init_db():
             is_banned INTEGER DEFAULT 0
         )
     ''')
-    # Chat tarixini saqlash jadvali
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_history (
             id SERIAL PRIMARY KEY,
@@ -95,7 +92,6 @@ def is_user_banned(user_id: int) -> bool:
 def add_verified_user(user_id: int, email: str):
     conn = get_db_connection()
     cursor = conn.cursor()
-    # PostgreSQL uchun UPSERT (ON CONFLICT) so'rovi
     cursor.execute('''
         INSERT INTO verified_users (user_id, email, violations, is_banned) 
         VALUES (%s, %s, 0, 0)
@@ -181,6 +177,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
+# --- /users buyrug'i: Har bir akkount yonida qoidabuzarliklar soni bilan ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -197,21 +194,33 @@ async def show_users_list(message: types.Message):
         await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q. 📭")
         return
     
-    text = "📋 **Tizimdagi barcha foydalanuvchilar:** 👥\n\n"
+    text = "📋 <b>Tizimdagi barcha foydalanuvchilar va qoidabuzarliklar:</b>\n\n"
     builder = InlineKeyboardBuilder()
     
     for idx, (uid, email, violations, is_banned) in enumerate(users, 1):
-        status_text = "🔴 Bloklangan" if is_banned else "🟢 Faol"
-        text += f"{idx}. ID: `{uid}`\n   📧 Email: `{email}`\n   ⚠️ Qoidabuzarlik: {violations} ta | Status: {status_text}\n\n"
-        
-        if is_banned == 0:
-            builder.button(text=f"🚫 Ban: {uid}", callback_data=f"ban_{uid}")
+        status_text = "🔴 Bloklangan" else "🟢 Faol" # sintaksis to'g'irlandi
+        if is_banned == 1:
+            status_text = "🔴 Bloklangan"
         else:
-            builder.button(text=f"✅ Unban: {uid}", callback_data=f"unban_{uid}")
-            
-    builder.adjust(2)
-    await message.answer(text, parse_mode="Markdown", reply_markup=builder.as_markup())
+            status_text = "🟢 Faol"
+        
+        # Har bir akkount yonida uning qoidabuzarliklar soni chiqadi
+        text += (
+            f"<b>{idx}.</b> 🆔 ID: <code>{uid}</code>\n"
+            f"📧 Email: <code>{email}</code>\n"
+            f"⚠️ Qoidabuzarlik: <b>{violations} ta</b> | {status_text}\n"
+            f"-----------------------------------\n"
+        )
+        
+        # Tugma matni
+        btn_text = f"🚫 Ban ({uid}) [{violations} ta]" if is_banned == 0 else f"✅ Unban ({uid})"
+        callback_action = f"ban_{uid}" if is_banned == 0 else f"unban_{uid}"
+        builder.button(text=btn_text, callback_data=callback_action)
+    
+    builder.adjust(1)
+    await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
+# --- Ban / Unban tugmalari ishlashi ---
 @dp.callback_query(F.data.startswith("ban_") | F.data.startswith("unban_"))
 async def process_ban_unban(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -229,32 +238,21 @@ async def process_ban_unban(callback: types.CallbackQuery):
     else:
         cursor.execute('UPDATE verified_users SET is_banned = 0 WHERE user_id = %s', (uid,))
         msg = f"Foydalanuvchi {uid} blokdan chiqarildi! ✅"
+        
     conn.commit()
-    
-    cursor.execute('SELECT user_id, email, violations, is_banned FROM verified_users')
-    users = cursor.fetchall()
     cursor.close()
     conn.close()
     
-    text = "📋 **Tizimdagi barcha foydalanuvchilar:** 👥\n\n"
-    builder = InlineKeyboardBuilder()
-    
-    for idx, (u_id, email, violations, is_banned) in enumerate(users, 1):
-        status_text = "🔴 Bloklangan" if is_banned else "🟢 Faol"
-        text += f"{idx}. ID: `{u_id}`\n   📧 Email: `{email}`\n   ⚠️ Qoidabuzarlik: {violations} ta | Status: {status_text}\n\n"
-        
-        if is_banned == 0:
-            builder.button(text=f"🚫 Ban: {u_id}", callback_data=f"ban_{u_id}")
-        else:
-            builder.button(text=f"✅ Unban: {u_id}", callback_data=f"unban_{u_id}")
-            
-    builder.adjust(2)
+    await callback.answer(msg, show_alert=True)
     
     try:
-        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=builder.as_markup())
+        await callback.message.delete()
     except Exception:
         pass
-    await callback.answer(msg)
+    
+    fake_message = callback.message
+    fake_message.from_user = callback.from_user
+    await show_users_list(fake_message)
 
 @dp.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
@@ -370,7 +368,6 @@ async def process_code(message: types.Message, state: FSMContext):
         )
         await state.set_state(AuthState.authenticated)
     else:
-        # Kod xato kiritilsa bazada qoidabuzarliklar sonini 1 taga oshiramiz
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
