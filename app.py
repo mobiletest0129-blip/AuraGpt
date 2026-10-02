@@ -74,7 +74,12 @@ def is_user_verified(user_id: int) -> bool:
 def add_verified_user(user_id: int, email: str):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    cursor.execute('INSERT OR REPLACE INTO verified_users (user_id, email) VALUES (?, ?)', (user_id, email))
+    # To'g'ri qo'shish va yangilash (ON CONFLICT)
+    cursor.execute('''
+        INSERT INTO verified_users (user_id, email) 
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET email=excluded.email
+    ''', (user_id, email))
     conn.commit()
     conn.close()
 
@@ -82,7 +87,6 @@ def remove_verified_user(user_id: int):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
     cursor.execute('DELETE FROM verified_users WHERE user_id = ?', (user_id,))
-    # Foydalanuvchi chiqib ketsa chat tarixini ham tozalash
     cursor.execute('DELETE FROM chat_history WHERE user_id = ?', (user_id,))
     conn.commit()
     conn.close()
@@ -103,7 +107,6 @@ def get_user_history(user_id: int):
     rows = cursor.fetchall()
     conn.close()
     
-    # Agar tarix bo'sh bo'lsa, system prompt ni qo'shib yaratamiz
     if not rows:
         system_content = (
             "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
@@ -123,11 +126,9 @@ def save_message_to_db(user_id: int, role: str, content: str):
     cursor.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
     conn.commit()
     
-    # Tarix juda uzayib ketmasa uchun faqat oxirgi 21 ta xabarni saqlab qolamiz (system prompt + 20 ta xabar)
     cursor.execute('SELECT COUNT(*) FROM chat_history WHERE user_id = ?', (user_id,))
     count = cursor.fetchone()[0]
     if count > 21:
-        # Eng birinchi xabardan keyingi eskirganlarini o'chiramiz (system prompt saqlanib qoladi)
         cursor.execute('''
             DELETE FROM chat_history 
             WHERE id IN (
@@ -144,7 +145,7 @@ class AuthState(StatesGroup):
     waiting_for_email = State()
     waiting_for_code = State()
     authenticated = State()
-    waiting_for_broadcast = State() # Broadcast uchun holat
+    waiting_for_broadcast = State()
 
 verification_codes = {}      
 
@@ -191,7 +192,6 @@ async def show_users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# --- Broadcast (Xabar tarqatish) buyrug'i ---
 @dp.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
@@ -217,10 +217,9 @@ async def process_broadcast(message: types.Message, state: FSMContext):
     
     for uid, _ in users:
         try:
-            # Admin yuborgan xabarni nusxalab foydalanuvchiga yuboramiz
             await message.send_copy(chat_id=uid)
             success_count += 1
-            await asyncio.sleep(0.05) # Telegram limitlariga tushib qolmaslik uchun kichik tanaffus
+            await asyncio.sleep(0.05)
         except Exception:
             fail_count += 1
             
@@ -231,7 +230,6 @@ async def process_broadcast(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
     await state.set_state(AuthState.authenticated)
-# ---------------------------------------------
 
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
@@ -293,7 +291,6 @@ async def process_code(message: types.Message, state: FSMContext):
         except Exception as e:
             print(f"Adminni ogohlantirishda xato: {e}")
         
-        # Bazada yangi foydalanuvchi uchun tarixni tayyorlaymiz
         get_user_history(user_id)
         
         await message.answer(
@@ -336,10 +333,7 @@ async def logout_user(message: types.Message, state: FSMContext):
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
     
-    # Foydalanuvchi xabarini bazaga yozamiz
     save_message_to_db(user_id, "user", message.text)
-    
-    # Bazadan to'liq suhbat tarixini olib kelamiz
     current_history = get_user_history(user_id)
 
     response_text = None
@@ -358,7 +352,6 @@ async def chat_with_ai(message: types.Message):
             continue  
 
     if response_text:
-        # AI javobini ham bazaga yozamiz
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=get_chat_keyboard())
     else:
