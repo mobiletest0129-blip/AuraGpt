@@ -47,10 +47,10 @@ BAD_WORDS = [
     "obrez", "bachkirlar", "qang'up", "kalamush", "qorin", "murdor", "laqma",
     "qaraqurt", "qashqir", "itek", "kimsasiz", "so'zlamang", "bachagi", "quturgan",
     
-    # Ruscha asosiy so'kinishlar (matn ichida ishlatilganda ham ushlash uchun)
-    "blyad", "blyad", "suka", "blat", "mraz", "gavno", "ebal", "ebat", "ebaniy",
+    # Ruscha asosiy so'kinishlar
+    "blyad", "suka", "blat", "mraz", "gavno", "ebal", "ebat", "ebaniy",
     "pizdat", "pizda", "hui", "huy", "huesos", "chmo", "mudak", "shlyuha", 
-    "ebany", "ebat", "sukin", "syuka", "blatnoy", "pidor", "pidaras", "pirozhok",
+    "ebany", "sukin", "syuka", "blatnoy", "pidor", "pidaras", "pirozhok",
     "dolboyob", "gondon", "zlo", "uran", "tvot", "skot", "ublyudok", "vyrodok"
 ]
 
@@ -232,11 +232,10 @@ async def cmd_help(message: types.Message):
         "200 dan ortiq tillarda istalgan mavzuda savollaringizga javob bera olaman.\n\n"
         "📌 **Asosiy qoidalar:**\n"
         "• Botga so'kinish va haqoratli so'zlar yozish taqiqlangan 🚫\n"
-        "• Shubhali havolalar (linklar) va zararli fayllar yuborish taqiqlangan ⚠️\n"
-        "• Qoidabuzarliklar hisobga borib boriladi va tizimdan bloklanishga olib kelishi mumkin.\n\n"
+        "• Shubhali havolalar (linklar) yuborish taqiqlangan ⚠️\n"
+        "• APK, EXE, iOS (.ipa) va boshqa fayllarni yuborish qat'iyan taqiqlangan va qoidabuzarlik sifatida yoziladi 🚫📂\n\n"
         "💬 **Qanday foydalanish kerak?**\n"
-        "Shunchaki /start orqali pochtangizni tasdiqlang va istalgan tilda savollaringizni yo'llang! 🚀\n"
-        "✍️ **Takliflar uchun:** /feedback buyrug'idan foydalaning."
+        "Shunchaki /start orqali pochtangizni tasdiqlang va istalgan tilda savollaringizni yo'llang! 🚀"
     )
     
     if user_id == ADMIN_ID:
@@ -535,6 +534,7 @@ async def process_code(message: types.Message, state: FSMContext):
         add_violation(user_id)
         await message.answer("❌ Noto'g'ri kod! Qoidabuzarlik yozildi. Qayta urinib ko'ring. 🔄")
 
+# --- Fayllarni (APK, EXE, iOS / .ipa va boshqalar) bloklash va qoidabuzarlik yozish ---
 @dp.message(AuthState.authenticated, F.document | F.audio | F.video | F.photo)
 async def check_bad_files(message: types.Message):
     user_id = message.from_user.id
@@ -548,8 +548,9 @@ async def check_bad_files(message: types.Message):
     except Exception:
         pass
         
-    await message.answer("⚠️ **Diqqat!** Botga zararli fayl yoki shubhali hujjat yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
+    await message.answer("⚠️ **Diqqat!** Botga APK, EXE, iOS (.ipa) yoki boshqa turdagi fayllarni yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
 
+# --- Matnli xabarlar va AI bilan muloqot ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -560,6 +561,7 @@ async def chat_with_ai(message: types.Message):
     
     text_lower = message.text.lower()
     
+    # Havolalarni tekshirish (reklama linklari)
     if "http://" in text_lower or "https://" in text_lower or "www." in text_lower or ".ru" in text_lower or ".com" in text_lower and ("t.me/" not in text_lower):
         add_violation(user_id)
         try:
@@ -569,6 +571,7 @@ async def chat_with_ai(message: types.Message):
         await message.answer("⚠️ **Diqqat!** Botga shubhali yoki reklama havolalarini yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
         return
 
+    # So'kinishlarni tekshirish
     for word in BAD_WORDS:
         if word in text_lower:
             add_violation(user_id)
