@@ -53,6 +53,8 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Jadvalni yaratish (agar yo'q bo'lsa)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS verified_users (
             user_id BIGINT PRIMARY KEY,
@@ -61,17 +63,21 @@ def init_db():
             is_banned INTEGER DEFAULT 0
         )
     ''')
-    # Ustunlar yetishmasa avtomatik qo'shish
+    conn.commit()
+
+    # Agar eski jadval bo'lib ustunlar yetishmasa, xavfsiz qo'shish
     try:
-        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS violations INTEGER DEFAULT 0')
+        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS violations INTEGER DEFAULT 0;')
         conn.commit()
-    except Exception:
+    except Exception as e:
+        print(f"Xatolik violations ustunida: {e}")
         conn.rollback()
         
     try:
-        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0')
+        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0;')
         conn.commit()
-    except Exception:
+    except Exception as e:
+        print(f"Xatolik is_banned ustunida: {e}")
         conn.rollback()
 
     cursor.execute('''
@@ -106,7 +112,7 @@ def is_user_banned(user_id: int) -> bool:
     row = cursor.fetchone()
     cursor.close()
     conn.close()
-    return row and row[0] == 1
+    return row is not None and row[0] == 1
 
 def add_violation(user_id: int):
     conn = get_db_connection()
@@ -114,7 +120,7 @@ def add_violation(user_id: int):
     cursor.execute('''
         INSERT INTO verified_users (user_id, email, violations, is_banned) 
         VALUES (%s, 'Noma\'lum', 1, 0)
-        ON CONFLICT (user_id) DO UPDATE SET violations = verified_users.violations + 1
+        ON CONFLICT (user_id) DO UPDATE SET violations = COALESCE(verified_users.violations, 0) + 1
     ''', (user_id,))
     conn.commit()
     cursor.close()
@@ -401,7 +407,6 @@ async def process_code(message: types.Message, state: FSMContext):
         add_violation(user_id)
         await message.answer("❌ Noto'g'ri kod! Qoidabuzarlik yozildi. Qayta urinib ko'ring. 🔄")
 
-# --- Zararli fayllarni tekshirish ---
 @dp.message(AuthState.authenticated, F.document | F.audio | F.video | F.photo)
 async def check_bad_files(message: types.Message):
     user_id = message.from_user.id
@@ -417,7 +422,6 @@ async def check_bad_files(message: types.Message):
         
     await message.answer("⚠️ **Diqqat!** Botga zararli fayl yoki shubhali hujjat yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
 
-# --- Matn, havolalar va sukinishlarni tekshirish ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -428,7 +432,6 @@ async def chat_with_ai(message: types.Message):
     
     text_lower = message.text.lower()
     
-    # 1. Havolalarni tekshirish (virus linklar)
     if "http://" in text_lower or "https://" in text_lower or "www." in text_lower or ".ru" in text_lower or ".com" in text_lower and ("t.me/" not in text_lower):
         add_violation(user_id)
         try:
@@ -438,7 +441,6 @@ async def chat_with_ai(message: types.Message):
         await message.answer("⚠️ **Diqqat!** Botga shubhali yoki reklama havolalarini yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
         return
 
-    # 2. Sukinish va haqoratli so'zlarni tekshirish
     for word in BAD_WORDS:
         if word in text_lower:
             add_violation(user_id)
