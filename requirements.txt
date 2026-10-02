@@ -1,6 +1,5 @@
-aiogram
+aiogram>=3.0.0
 groq
-requests
 flask
-pydantic
 psycopg2-binary
+requests
