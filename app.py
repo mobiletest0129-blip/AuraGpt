@@ -210,6 +210,41 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
+# --- /stats buyrug'i: Bot statistikasi ---
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⚠ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        return
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT COUNT(*) FROM verified_users')
+    total_users = cursor.fetchone()[0]
+    
+    cursor.execute('SELECT COUNT(*) FROM verified_users WHERE is_banned = 1')
+    banned_users = cursor.fetchone()[0]
+    
+    active_users = total_users - banned_users
+    
+    cursor.execute('SELECT SUM(violations) FROM verified_users')
+    sum_violations = cursor.fetchone()[0]
+    total_violations = sum_violations if sum_violations else 0
+    
+    cursor.close()
+    conn.close()
+    
+    stats_text = (
+        f"📊 **AURAgpt Statistikasi:** 📈\n\n"
+        f"👥 Jami ro'yxatdan o'tganlar: **{total_users} ta**\n"
+        f"🟢 Faol foydalanuvchilar: **{active_users} ta**\n"
+        f"🔴 Bloklanganlar: **{banned_users} ta**\n"
+        f"⚠️️ Jami qoidabuzarliklar: **{total_violations} ta**"
+    )
+    
+    await message.answer(stats_text, parse_mode="Markdown")
+
 # --- /users buyrug'i: Har bir foydalanuvchi alohida xabar va o'z tugmasi bilan ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
@@ -486,13 +521,13 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(f"⚠️️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
 
 async def main():
     Thread(target=run_flask).start()
     print("Bot ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)  # To'g'rilangan joyi
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
