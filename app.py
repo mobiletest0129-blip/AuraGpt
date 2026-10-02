@@ -210,6 +210,34 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
+# --- /help buyrug'i: Yordam oynasi ---
+@dp.message(Command("help"))
+async def cmd_help(message: types.Message):
+    user_id = message.from_user.id
+    
+    help_text = (
+        "🤖 **AURAgpt Yordam Bo'limi** 🌟\n\n"
+        "✨ **Bot haqida:**\n"
+        "Men sun'iy intellekt yordamchisiman. Meni iste'dodli dasturchi **Bunyodbek Zokirov** yaratgan! 💻🔥\n"
+        "200 dan ortiq tillarda istalgan mavzuda savollaringizga javob bera olaman.\n\n"
+        "📌 **Asosiy qoidalar:**\n"
+        "• Botga so'kinish va haqoratli so'zlar yozish taqiqlangan 🚫\n"
+        "• Shubhali havolalar (linklar) va zararli fayllar yuborish taqiqlangan ⚠️\n"
+        "• Qoidabuzarliklar hisobga borib boriladi va tizimdan bloklanishga olib kelishi mumkin.\n\n"
+        "💬 **Qanday foydalanish kerak?**\n"
+        "Shunchaki /start orqali pochtangizni tasdiqlang va istalgan tilda savollaringizni yo'llang! 🚀"
+    )
+    
+    if user_id == ADMIN_ID:
+        help_text += (
+            "\n\n👑 **Admin buyruqlari:**\n"
+            "• /stats — Bot statistikasi (foydalanuvchilar va qoidabuzarliklar)\n"
+            "• /users — Tizimdagi barcha foydalanuvchilar ro'yxati va ularni Ban/Unban qilish\n"
+            "• /broadcast — Barcha foydalanuvchilarga xabar tarqatish"
+        )
+        
+    await message.answer(help_text, parse_mode="Markdown")
+
 # --- /stats buyrug'i: Bot statistikasi ---
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
@@ -240,7 +268,7 @@ async def cmd_stats(message: types.Message):
         f"👥 Jami ro'yxatdan o'tganlar: **{total_users} ta**\n"
         f"🟢 Faol foydalanuvchilar: **{active_users} ta**\n"
         f"🔴 Bloklanganlar: **{banned_users} ta**\n"
-        f"⚠️️ Jami qoidabuzarliklar: **{total_violations} ta**"
+        f"⚠ Jami qoidabuzarliklar: **{total_violations} ta**"
     )
     
     await message.answer(stats_text, parse_mode="Markdown")
@@ -521,7 +549,7 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(f"⚠ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
 
 async def main():
     Thread(target=run_flask).start()
