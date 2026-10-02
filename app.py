@@ -243,10 +243,94 @@ async def cmd_help(message: types.Message):
             "\n\n👑 **Admin buyruqlari:**\n"
             "• /stats — Bot statistikasi\n"
             "• /users — Tizimdagi foydalanuvchilar ro'yxati va Ban/Unban qilish\n"
+            "• /ban <user_id> — Foydalanuvchini ban qilish va uning nechta qoida buzganini ko'rish\n"
+            "• /unban <user_id> — Foydalanuvchini blokdan chiqarish\n"
             "• /broadcast — Barcha foydalanuvchilarga xabar tarqatish"
         )
         
     await message.answer(help_text, parse_mode="Markdown")
+
+# --- /ban <user_id> buyrug'i ---
+@dp.message(Command("ban"))
+async def cmd_ban_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        return
+    
+    args = message.text.split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer("⚠️ Noto'g'ri format! Ishlatish: `/ban <user_id>`", parse_mode="Markdown")
+        return
+    
+    target_id = int(args[1])
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT violations, is_banned, email FROM verified_users WHERE user_id = %s', (target_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        cursor.close()
+        conn.close()
+        await message.answer(f"❌ ID si `{target_id}` bo'lgan foydalanuvchi bazada topilmadi!", parse_mode="Markdown")
+        return
+        
+    violations = row[0] if row[0] is not None else 0
+    email = row[2] if row[2] else "Noma'lum"
+    
+    cursor.execute('UPDATE verified_users SET is_banned = 1 WHERE user_id = %s', (target_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    await message.answer(
+        f"✅ **Foydalanuvchi muvaffaqiyatli ban qilindi!** 🚫\n\n"
+        f"🆔 ID: <code>{target_id}</code>\n"
+        f"📧 Email: <code>{email}</code>\n"
+        f"⚠️ Jami qoidabuzarliklar soni: **{violations} ta**",
+        parse_mode="HTML"
+    )
+
+# --- /unban <user_id> buyrug'i ---
+@dp.message(Command("unban"))
+async def cmd_unban_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        return
+    
+    args = message.text.split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer("⚠️ Noto'g'ri format! Ishlatish: `/unban <user_id>`", parse_mode="Markdown")
+        return
+    
+    target_id = int(args[1])
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT violations, email FROM verified_users WHERE user_id = %s', (target_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        cursor.close()
+        conn.close()
+        await message.answer(f"❌ ID si `{target_id}` bo'lgan foydalanuvchi bazada topilmadi!", parse_mode="Markdown")
+        return
+        
+    violations = row[0] if row[0] is not None else 0
+    email = row[1] if row[1] else "Noma'lum"
+    
+    cursor.execute('UPDATE verified_users SET is_banned = 0 WHERE user_id = %s', (target_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    await message.answer(
+        f"✅ **Foydalanuvchi blokdan chiqarildi!** 🎉\n\n"
+        f"🆔 ID: <code>{target_id}</code>\n"
+        f"📧 Email: <code>{email}</code>\n"
+        f"⚠️ Qoidabuzarliklar soni: **{violations} ta**",
+        parse_mode="HTML"
+    )
 
 # --- /feedback buyrug'i ---
 @dp.message(Command("feedback"))
@@ -292,7 +376,7 @@ async def process_feedback(message: types.Message, state: FSMContext):
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⚠ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return
     
     conn = get_db_connection()
@@ -318,7 +402,7 @@ async def cmd_stats(message: types.Message):
         f"👥 Jami ro'yxatdan o'tganlar: **{total_users} ta**\n"
         f"🟢 Faol foydalanuvchilar: **{active_users} ta**\n"
         f"🔴 Bloklanganlar: **{banned_users} ta**\n"
-        f"⚠ Jami qoidabuzarliklar: **{total_violations} ta**"
+        f"⚠️ Jami qoidabuzarliklar: **{total_violations} ta**"
     )
     
     await message.answer(stats_text, parse_mode="Markdown")
@@ -327,7 +411,7 @@ async def cmd_stats(message: types.Message):
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⚠ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return  
     
     conn = get_db_connection()
@@ -457,7 +541,7 @@ async def process_broadcast(message: types.Message, state: FSMContext):
     await status_msg.edit_text(
         f"✅ **Xabar tarqatish yakunlandi!** 🚀\n\n"
         f"👥 Muvaffaqiyatli: {success_count} ta\n"
-        f"⚠ Xatolik: {fail_count} ta",
+        f"⚠️ Xatolik: {fail_count} ta",
         parse_mode="Markdown"
     )
     await state.set_state(AuthState.authenticated)
@@ -497,7 +581,7 @@ async def process_email(message: types.Message, state: FSMContext):
             await message.answer(f"📩 **{email}** manziliga kod yuborildi! 🔑 Kodni kiriting:", parse_mode="Markdown")
             await state.set_state(AuthState.waiting_for_code)
         else:
-            await message.answer(f"⚠ Xatolik (Brevo): {response.text}")
+            await message.answer(f"⚠️ Xatolik (Brevo): {response.text}")
     except Exception as e:
         await message.answer(f"⚠️ Tarmoq xatoligi: {str(e)}")
 
@@ -603,7 +687,7 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
 
 async def main():
     Thread(target=run_flask).start()
