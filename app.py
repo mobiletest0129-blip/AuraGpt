@@ -39,10 +39,19 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- Sukinish va haqoratli so'zlar ro'yxati ---
+# --- Kengaytirilgan sukinish va haqoratli so'zlar ro'yxati (O'zbek va Rus tillarida) ---
 BAD_WORDS = [
-    "ahmoq", "tentak", "gandon", "mraz", "suka", "blat", "blyad", "dalbayob", 
-    "chmo", "qnt", "qadam", "jalab", "qo'toq", "sikaman", "skaman", "qotoq"
+    # O'zbekcha haqorat va so'kinishlar
+    "ahmoq", "tentak", "gandon", "dalbayob", "chmo", "qnt", "qadam", "jalab", 
+    "qo'toq", "sikaman", "skaman", "qotoq", "haromi", "iflos", "jinni", "eshak", 
+    "obrez", "bachkirlar", "qang'up", "kalamush", "qorin", "murdor", "laqma",
+    "qaraqurt", "qashqir", "itek", "kimsasiz", "so'zlamang", "bachagi", "quturgan",
+    
+    # Ruscha asosiy so'kinishlar (matn ichida ishlatilganda ham ushlash uchun)
+    "blyad", "blyad", "suka", "blat", "mraz", "gavno", "ebal", "ebat", "ebaniy",
+    "pizdat", "pizda", "hui", "huy", "huesos", "chmo", "mudak", "shlyuha", 
+    "ebany", "ebat", "sukin", "syuka", "blatnoy", "pidor", "pidaras", "pirozhok",
+    "dolboyob", "gondon", "zlo", "uran", "tvot", "skot", "ublyudok", "vyrodok"
 ]
 
 # --- PostgreSQL Ma'lumotlar bazasini ulash va yaratish ---
@@ -181,6 +190,7 @@ class AuthState(StatesGroup):
     waiting_for_code = State()
     authenticated = State()
     waiting_for_broadcast = State()
+    waiting_for_feedback = State()
 
 verification_codes = {}      
 
@@ -210,7 +220,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- /help buyrug'i: Yordam oynasi ---
+# --- /help buyrug'i ---
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     user_id = message.from_user.id
@@ -225,20 +235,61 @@ async def cmd_help(message: types.Message):
         "• Shubhali havolalar (linklar) va zararli fayllar yuborish taqiqlangan ⚠️\n"
         "• Qoidabuzarliklar hisobga borib boriladi va tizimdan bloklanishga olib kelishi mumkin.\n\n"
         "💬 **Qanday foydalanish kerak?**\n"
-        "Shunchaki /start orqali pochtangizni tasdiqlang va istalgan tilda savollaringizni yo'llang! 🚀"
+        "Shunchaki /start orqali pochtangizni tasdiqlang va istalgan tilda savollaringizni yo'llang! 🚀\n"
+        "✍️ **Takliflar uchun:** /feedback buyrug'idan foydalaning."
     )
     
     if user_id == ADMIN_ID:
         help_text += (
             "\n\n👑 **Admin buyruqlari:**\n"
-            "• /stats — Bot statistikasi (foydalanuvchilar va qoidabuzarliklar)\n"
-            "• /users — Tizimdagi barcha foydalanuvchilar ro'yxati va ularni Ban/Unban qilish\n"
+            "• /stats — Bot statistikasi\n"
+            "• /users — Tizimdagi foydalanuvchilar ro'yxati va Ban/Unban qilish\n"
             "• /broadcast — Barcha foydalanuvchilarga xabar tarqatish"
         )
         
     await message.answer(help_text, parse_mode="Markdown")
 
-# --- /stats buyrug'i: Bot statistikasi ---
+# --- /feedback buyrug'i ---
+@dp.message(Command("feedback"))
+async def cmd_feedback(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if is_user_banned(user_id):
+        await message.answer("❌ Siz bloklangansiz!")
+        return
+
+    await message.answer(
+        "✍️ **Taklif va shikoyatlar bo'limi:**\n\n"
+        "Bot bo'yicha fikringiz, topgan xatolaringiz yoki yangi takliflaringizni shu yerga yozib yuboring. Xabaringiz to'g'ridan-to'g'ri dasturchiga yetkaziladi! 📨",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AuthState.waiting_for_feedback)
+
+@dp.message(AuthState.waiting_for_feedback, F.text)
+async def process_feedback(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    feedback_text = message.text
+
+    await message.answer("✅ Rahmat! Sizning xabaringiz adminga yuborildi. 🚀", parse_mode="Markdown")
+    
+    try:
+        if ADMIN_ID:
+            user_info = f"👤 Foydalanuvchi: @{message.from_user.username}" if message.from_user.username else f"👤 Foydalanuvchi ID: `{user_id}`"
+            await bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"📬 **YANGI FEEDBACK (XABAR)!** 💡\n\n"
+                    f"{user_info}\n"
+                    f"🆔 ID kodi: <code>{user_id}</code>\n\n"
+                    f"💬 **Xabar matni:**\n{feedback_text}"
+                ),
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        print(f"Feedback yuborishda xato: {e}")
+        
+    await state.set_state(AuthState.authenticated)
+
+# --- /stats buyrug'i ---
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -273,7 +324,7 @@ async def cmd_stats(message: types.Message):
     
     await message.answer(stats_text, parse_mode="Markdown")
 
-# --- /users buyrug'i: Har bir foydalanuvchi alohida xabar va o'z tugmasi bilan ---
+# --- /users buyrug'i ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
