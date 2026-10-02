@@ -61,6 +61,19 @@ def init_db():
             is_banned INTEGER DEFAULT 0
         )
     ''')
+    # Mavjud jadvalga yetishmayotgan ustunlarni xavfsiz qo'shish
+    try:
+        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS violations INTEGER DEFAULT 0')
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        
+    try:
+        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0')
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_history (
             id SERIAL PRIMARY KEY,
@@ -204,11 +217,7 @@ async def show_users_list(message: types.Message):
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    try:
-        cursor.execute('SELECT user_id, email, violations, is_banned FROM verified_users')
-    except Exception:
-        cursor.execute('SELECT user_id, email FROM verified_users')
-    
+    cursor.execute('SELECT user_id, email, violations, is_banned FROM verified_users')
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -222,9 +231,9 @@ async def show_users_list(message: types.Message):
     
     for idx, row in enumerate(rows, 1):
         uid = row[0]
-        email = row[1] if len(row) > 1 and row[1] else "Noma'lum"
-        violations = row[2] if len(row) > 2 and row[2] is not None else 0
-        is_banned = row[3] if len(row) > 3 and row[3] is not None else 0
+        email = row[1] if row[1] else "Noma'lum"
+        violations = row[2] if row[2] is not None else 0
+        is_banned = row[3] if row[3] is not None else 0
         
         status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
         
@@ -461,7 +470,7 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(f"⚠️️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
 
 async def main():
     Thread(target=run_flask).start()
