@@ -243,10 +243,72 @@ async def cmd_help(message: types.Message):
             "\n\n👑 **Admin buyruqlari:**\n"
             "• /stats — Bot statistikasi\n"
             "• /users — Tizimdagi foydalanuvchilar ro'yxati va ularni tugma orqali Ban/Unban qilish\n"
+            "• `/ban id:123456778` — Foydalanuvchini ban qilish, qayta yuborilsa unban qilish (toggle)\n"
             "• /broadcast — Barcha foydalanuvchilarga xabar tarqatish"
         )
         
     await message.answer(help_text, parse_mode="Markdown")
+
+# --- /ban id:ID buyrug'i (Toggle: Ban/Unban) ---
+@dp.message(Command("ban"))
+async def cmd_toggle_ban(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        return
+    
+    text = message.text.strip()
+    # Masalan: /ban id:123456778
+    if "id:" not in text:
+        await message.answer("⚠️ Noto'g'ri format! Ishlatish: `/ban id:123456778`", parse_mode="Markdown")
+        return
+    
+    try:
+        parts = text.split("id:")
+        target_id_str = parts[1].strip().split()[0]
+        target_id = int(target_id_str)
+    except Exception:
+        await message.answer("⚠️ ID noto'g'ri ko'rsatilgan! Ishlatish: `/ban id:123456778`", parse_mode="Markdown")
+        return
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT email, violations, is_banned FROM verified_users WHERE user_id = %s', (target_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        cursor.close()
+        conn.close()
+        await message.answer(f"❌ ID si `{target_id}` bo'lgan foydalanuvchi bazada topilmadi!", parse_mode="Markdown")
+        return
+        
+    email = row[0] if row[0] else "Noma'lum"
+    violations = row[1] if row[1] is not None else 0
+    current_ban_status = row[2] if row[2] is not None else 0
+    
+    # Agar ban qilingan bo'lsa -> unban (0), agar unban bo'lsa -> ban (1)
+    new_ban_status = 0 if current_ban_status == 1 else 1
+    
+    cursor.execute('UPDATE verified_users SET is_banned = %s WHERE user_id = %s', (new_ban_status, target_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    if new_ban_status == 1:
+        await message.answer(
+            f"🚫 **Foydalanuvchi muvaffaqiyatli BAN qilindi!**\n\n"
+            f"🆔 ID: <code>{target_id}</code>\n"
+            f"📧 Email: <code>{email}</code>\n"
+            f"⚠️ Qoidabuzarlik: <b>{violations} ta</b>",
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            f"✅ **Foydalanuvchi blokdan chiqarildi (UNBAN)!** 🎉\n\n"
+            f"🆔 ID: <code>{target_id}</code>\n"
+            f"📧 Email: <code>{email}</code>\n"
+            f"⚠️ Qoidabuzarlik: <b>{violations} ta</b>",
+            parse_mode="HTML"
+        )
 
 # --- /feedback buyrug'i ---
 @dp.message(Command("feedback"))
@@ -327,7 +389,7 @@ async def cmd_stats(message: types.Message):
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⚠️️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return  
     
     conn = get_db_connection()
