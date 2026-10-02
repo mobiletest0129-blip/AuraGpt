@@ -177,10 +177,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- /users buyrug'i: Har bir akkount yonida qoidabuzarliklar soni bilan ---
+# --- /users buyrug'i: Faqat admin uchun, qoidabuzarliklar va tugmalar bilan ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
+        await message.answer("⚠️️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return  
     
     conn = get_db_connection()
@@ -198,10 +199,8 @@ async def show_users_list(message: types.Message):
     builder = InlineKeyboardBuilder()
     
     for idx, (uid, email, violations, is_banned) in enumerate(users, 1):
-        # Sintaksis xatosi to'g'irlandi:
         status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
         
-        # Har bir akkount yonida uning qoidabuzarliklar soni chiqadi
         text += (
             f"<b>{idx}.</b> 🆔 ID: <code>{uid}</code>\n"
             f"📧 Email: <code>{email}</code>\n"
@@ -209,7 +208,6 @@ async def show_users_list(message: types.Message):
             f"-----------------------------------\n"
         )
         
-        # Tugma matni
         btn_text = f"🚫 Ban ({uid}) [{violations} ta]" if is_banned == 0 else f"✅ Unban ({uid})"
         callback_action = f"ban_{uid}" if is_banned == 0 else f"unban_{uid}"
         builder.button(text=btn_text, callback_data=callback_action)
