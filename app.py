@@ -198,11 +198,8 @@ async def show_users_list(message: types.Message):
     builder = InlineKeyboardBuilder()
     
     for idx, (uid, email, violations, is_banned) in enumerate(users, 1):
-        status_text = "🔴 Bloklangan" else "🟢 Faol" # sintaksis to'g'irlandi
-        if is_banned == 1:
-            status_text = "🔴 Bloklangan"
-        else:
-            status_text = "🟢 Faol"
+        # Sintaksis xatosi to'g'irlandi:
+        status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
         
         # Har bir akkount yonida uning qoidabuzarliklar soni chiqadi
         text += (
