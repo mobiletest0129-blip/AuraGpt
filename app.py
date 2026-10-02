@@ -39,7 +39,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- Sukinish va haqoratli so'zlar ro'yxati (filtrlash uchun) ---
+# --- Sukinish va haqoratli so'zlar ro'yxati ---
 BAD_WORDS = [
     "ahmoq", "tentak", "gandon", "mraz", "suka", "blat", "blyad", "dalbayob", 
     "chmo", "qnt", "qadam", "jalab", "qo'toq", "sikaman", "skaman", "qotoq"
@@ -195,7 +195,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- /users buyrug'i: Admin uchun foydalanuvchilar va ban tugmalari ---
+# --- /users buyrug'i: Barcha foydalanuvchilar va ban/unban tugmalari ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -204,19 +204,28 @@ async def show_users_list(message: types.Message):
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT user_id, email, violations, is_banned FROM verified_users')
-    users = cursor.fetchall()
+    try:
+        cursor.execute('SELECT user_id, email, violations, is_banned FROM verified_users')
+    except Exception:
+        cursor.execute('SELECT user_id, email FROM verified_users')
+    
+    rows = cursor.fetchall()
     cursor.close()
     conn.close()
     
-    if not users:
+    if not rows:
         await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q. 📭")
         return
     
-    text = "📋 <b>Tizimdagi barcha foydalanuvchilar va qoidabuzarliklar:</b>\n\n"
+    text = "📋 <b>Tizimdagi barcha foydalanuvchilar:</b>\n\n"
     builder = InlineKeyboardBuilder()
     
-    for idx, (uid, email, violations, is_banned) in enumerate(users, 1):
+    for idx, row in enumerate(rows, 1):
+        uid = row[0]
+        email = row[1] if len(row) > 1 and row[1] else "Noma'lum"
+        violations = row[2] if len(row) > 2 and row[2] is not None else 0
+        is_banned = row[3] if len(row) > 3 and row[3] is not None else 0
+        
         status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
         
         text += (
@@ -383,7 +392,7 @@ async def process_code(message: types.Message, state: FSMContext):
         add_violation(user_id)
         await message.answer("❌ Noto'g'ri kod! Qoidabuzarlik yozildi. Qayta urinib ko'ring. 🔄")
 
-# --- Fayl yoki hujjat yuborganda tekshirish (Virusli fayllar uchun) ---
+# --- Zararli fayllarni tekshirish ---
 @dp.message(AuthState.authenticated, F.document | F.audio | F.video | F.photo)
 async def check_bad_files(message: types.Message):
     user_id = message.from_user.id
@@ -391,10 +400,7 @@ async def check_bad_files(message: types.Message):
         await message.answer("❌ Siz botdan bloklangansiz!")
         return
 
-    # Zararli fayl yuborilganda qoidabuzarlik qo'shish
     add_violation(user_id)
-    
-    # Faylni o'chirib tashlaymiz
     try:
         await message.delete()
     except Exception:
@@ -402,7 +408,7 @@ async def check_bad_files(message: types.Message):
         
     await message.answer("⚠️ **Diqqat!** Botga zararli fayl yoki shubhali hujjat yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
 
-# --- Matnli xabarlarni va havolalarni / sukinishlarni tekshirish ---
+# --- Matn, havolalar va sukinishlarni tekshirish ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -413,7 +419,7 @@ async def chat_with_ai(message: types.Message):
     
     text_lower = message.text.lower()
     
-    # 1. Havolalarni (linklarni) tekshirish (virus linklar)
+    # 1. Havolalarni tekshirish (virus linklar)
     if "http://" in text_lower or "https://" in text_lower or "www." in text_lower or ".ru" in text_lower or ".com" in text_lower and ("t.me/" not in text_lower):
         add_violation(user_id)
         try:
@@ -434,7 +440,6 @@ async def chat_with_ai(message: types.Message):
             await message.answer("⚠️ **Ogohlantirish!** Botda so'kinish va haqorat qilish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
             return
 
-    # Agar qoida buzilmagan bo'lsa, AI ga yuboramiz
     save_message_to_db(user_id, "user", message.text)
     current_history = get_user_history(user_id)
 
