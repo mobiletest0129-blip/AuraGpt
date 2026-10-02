@@ -242,95 +242,11 @@ async def cmd_help(message: types.Message):
         help_text += (
             "\n\n👑 **Admin buyruqlari:**\n"
             "• /stats — Bot statistikasi\n"
-            "• /users — Tizimdagi foydalanuvchilar ro'yxati va Ban/Unban qilish\n"
-            "• /ban <user_id> — Foydalanuvchini ban qilish va uning nechta qoida buzganini ko'rish\n"
-            "• /unban <user_id> — Foydalanuvchini blokdan chiqarish\n"
+            "• /users — Tizimdagi foydalanuvchilar ro'yxati va ularni tugma orqali Ban/Unban qilish\n"
             "• /broadcast — Barcha foydalanuvchilarga xabar tarqatish"
         )
         
     await message.answer(help_text, parse_mode="Markdown")
-
-# --- /ban <user_id> buyrug'i ---
-@dp.message(Command("ban"))
-async def cmd_ban_user(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
-        return
-    
-    args = message.text.split()
-    if len(args) < 2 or not args[1].isdigit():
-        await message.answer("⚠️ Noto'g'ri format! Ishlatish: `/ban <user_id>`", parse_mode="Markdown")
-        return
-    
-    target_id = int(args[1])
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT violations, is_banned, email FROM verified_users WHERE user_id = %s', (target_id,))
-    row = cursor.fetchone()
-    
-    if not row:
-        cursor.close()
-        conn.close()
-        await message.answer(f"❌ ID si `{target_id}` bo'lgan foydalanuvchi bazada topilmadi!", parse_mode="Markdown")
-        return
-        
-    violations = row[0] if row[0] is not None else 0
-    email = row[2] if row[2] else "Noma'lum"
-    
-    cursor.execute('UPDATE verified_users SET is_banned = 1 WHERE user_id = %s', (target_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
-    await message.answer(
-        f"✅ **Foydalanuvchi muvaffaqiyatli ban qilindi!** 🚫\n\n"
-        f"🆔 ID: <code>{target_id}</code>\n"
-        f"📧 Email: <code>{email}</code>\n"
-        f"⚠️ Jami qoidabuzarliklar soni: **{violations} ta**",
-        parse_mode="HTML"
-    )
-
-# --- /unban <user_id> buyrug'i ---
-@dp.message(Command("unban"))
-async def cmd_unban_user(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
-        return
-    
-    args = message.text.split()
-    if len(args) < 2 or not args[1].isdigit():
-        await message.answer("⚠️ Noto'g'ri format! Ishlatish: `/unban <user_id>`", parse_mode="Markdown")
-        return
-    
-    target_id = int(args[1])
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT violations, email FROM verified_users WHERE user_id = %s', (target_id,))
-    row = cursor.fetchone()
-    
-    if not row:
-        cursor.close()
-        conn.close()
-        await message.answer(f"❌ ID si `{target_id}` bo'lgan foydalanuvchi bazada topilmadi!", parse_mode="Markdown")
-        return
-        
-    violations = row[0] if row[0] is not None else 0
-    email = row[1] if row[1] else "Noma'lum"
-    
-    cursor.execute('UPDATE verified_users SET is_banned = 0 WHERE user_id = %s', (target_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
-    await message.answer(
-        f"✅ **Foydalanuvchi blokdan chiqarildi!** 🎉\n\n"
-        f"🆔 ID: <code>{target_id}</code>\n"
-        f"📧 Email: <code>{email}</code>\n"
-        f"⚠️ Qoidabuzarliklar soni: **{violations} ta**",
-        parse_mode="HTML"
-    )
 
 # --- /feedback buyrug'i ---
 @dp.message(Command("feedback"))
@@ -407,11 +323,11 @@ async def cmd_stats(message: types.Message):
     
     await message.answer(stats_text, parse_mode="Markdown")
 
-# --- /users buyrug'i ---
+# --- /users buyrug'i va tugmalar ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        await message.answer("⚠️️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return  
     
     conn = get_db_connection()
@@ -425,7 +341,7 @@ async def show_users_list(message: types.Message):
         await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q. 📭")
         return
     
-    await message.answer(f"📋 <b>Tizimdagi jami foydalanuvchilar: {len(rows)} ta</b>", parse_mode="HTML")
+    await message.answer(f"📋 <b>Tizimdagi jami foydalanuvchilar: {len(rows)} ta</b>\n👇 Foydalanuvchini boshqarish uchun tugmani bosing:", parse_mode="HTML")
     
     for idx, row in enumerate(rows, 1):
         uid = row[0]
