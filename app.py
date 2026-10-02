@@ -61,7 +61,7 @@ def init_db():
             is_banned INTEGER DEFAULT 0
         )
     ''')
-    # Mavjud jadvalga yetishmayotgan ustunlarni xavfsiz qo'shish
+    # Ustunlar yetishmasa avtomatik qo'shish
     try:
         cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS violations INTEGER DEFAULT 0')
         conn.commit()
@@ -208,7 +208,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- /users buyrug'i: Barcha foydalanuvchilar va ban/unban tugmalari ---
+# --- /users buyrug'i: Barcha foydalanuvchilar va tugmalar ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -470,7 +470,7 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
 
 async def main():
     Thread(target=run_flask).start()
