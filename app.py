@@ -39,6 +39,12 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
+# --- Sukinish va haqoratli so'zlar ro'yxati (filtrlash uchun) ---
+BAD_WORDS = [
+    "ahmoq", "tentak", "gandon", "mraz", "suka", "blat", "blyad", "dalbayob", 
+    "chmo", "qnt", "qadam", "jalab", "qo'toq", "sikaman", "skaman", "qotoq"
+]
+
 # --- PostgreSQL Ma'lumotlar bazasini ulash va yaratish ---
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode='require')
@@ -88,6 +94,18 @@ def is_user_banned(user_id: int) -> bool:
     cursor.close()
     conn.close()
     return row and row[0] == 1
+
+def add_violation(user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO verified_users (user_id, email, violations, is_banned) 
+        VALUES (%s, 'Noma\'lum', 1, 0)
+        ON CONFLICT (user_id) DO UPDATE SET violations = verified_users.violations + 1
+    ''', (user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 def add_verified_user(user_id: int, email: str):
     conn = get_db_connection()
@@ -177,11 +195,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- /users buyrug'i: Faqat admin uchun, qoidabuzarliklar va tugmalar bilan ---
+# --- /users buyrug'i: Admin uchun foydalanuvchilar va ban tugmalari ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⚠️️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
+        await message.answer("⚠ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return  
     
     conn = get_db_connection()
@@ -215,7 +233,6 @@ async def show_users_list(message: types.Message):
     builder.adjust(1)
     await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
-# --- Ban / Unban tugmalari ishlashi ---
 @dp.callback_query(F.data.startswith("ban_") | F.data.startswith("unban_"))
 async def process_ban_unban(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -363,19 +380,29 @@ async def process_code(message: types.Message, state: FSMContext):
         )
         await state.set_state(AuthState.authenticated)
     else:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO verified_users (user_id, email, violations, is_banned) 
-            VALUES (%s, 'Noma\'lum', 1, 0)
-            ON CONFLICT (user_id) DO UPDATE SET violations = verified_users.violations + 1
-        ''', (user_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        await message.answer("❌ Noto'g'ri kod! Qayta urinib ko'ring. 🔄")
+        add_violation(user_id)
+        await message.answer("❌ Noto'g'ri kod! Qoidabuzarlik yozildi. Qayta urinib ko'ring. 🔄")
 
+# --- Fayl yoki hujjat yuborganda tekshirish (Virusli fayllar uchun) ---
+@dp.message(AuthState.authenticated, F.document | F.audio | F.video | F.photo)
+async def check_bad_files(message: types.Message):
+    user_id = message.from_user.id
+    if is_user_banned(user_id):
+        await message.answer("❌ Siz botdan bloklangansiz!")
+        return
+
+    # Zararli fayl yuborilganda qoidabuzarlik qo'shish
+    add_violation(user_id)
+    
+    # Faylni o'chirib tashlaymiz
+    try:
+        await message.delete()
+    except Exception:
+        pass
+        
+    await message.answer("⚠️ **Diqqat!** Botga zararli fayl yoki shubhali hujjat yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
+
+# --- Matnli xabarlarni va havolalarni / sukinishlarni tekshirish ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -384,6 +411,30 @@ async def chat_with_ai(message: types.Message):
         await message.answer("❌ Siz botdan bloklangansiz!")
         return
     
+    text_lower = message.text.lower()
+    
+    # 1. Havolalarni (linklarni) tekshirish (virus linklar)
+    if "http://" in text_lower or "https://" in text_lower or "www." in text_lower or ".ru" in text_lower or ".com" in text_lower and ("t.me/" not in text_lower):
+        add_violation(user_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await message.answer("⚠️ **Diqqat!** Botga shubhali yoki reklama havolalarini yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
+        return
+
+    # 2. Sukinish va haqoratli so'zlarni tekshirish
+    for word in BAD_WORDS:
+        if word in text_lower:
+            add_violation(user_id)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            await message.answer("⚠️ **Ogohlantirish!** Botda so'kinish va haqorat qilish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
+            return
+
+    # Agar qoida buzilmagan bo'lsa, AI ga yuboramiz
     save_message_to_db(user_id, "user", message.text)
     current_history = get_user_history(user_id)
 
@@ -411,7 +462,7 @@ async def main():
     Thread(target=run_flask).start()
     print("Bot ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    await dp.polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
