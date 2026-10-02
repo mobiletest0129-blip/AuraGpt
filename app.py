@@ -54,7 +54,6 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Jadvalni yaratish (agar yo'q bo'lsa)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS verified_users (
             user_id BIGINT PRIMARY KEY,
@@ -65,19 +64,16 @@ def init_db():
     ''')
     conn.commit()
 
-    # Agar eski jadval bo'lib ustunlar yetishmasa, xavfsiz qo'shish
     try:
         cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS violations INTEGER DEFAULT 0;')
         conn.commit()
-    except Exception as e:
-        print(f"Xatolik violations ustunida: {e}")
+    except Exception:
         conn.rollback()
         
     try:
         cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0;')
         conn.commit()
-    except Exception as e:
-        print(f"Xatolik is_banned ustunida: {e}")
+    except Exception:
         conn.rollback()
 
     cursor.execute('''
@@ -214,7 +210,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- /users buyrug'i: Barcha foydalanuvchilar va tugmalar ---
+# --- /users buyrug'i: Har bir foydalanuvchi alohida xabar va o'z tugmasi bilan ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -232,8 +228,7 @@ async def show_users_list(message: types.Message):
         await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q. 📭")
         return
     
-    text = "📋 <b>Tizimdagi barcha foydalanuvchilar:</b>\n\n"
-    builder = InlineKeyboardBuilder()
+    await message.answer(f"📋 <b>Tizimdagi jami foydalanuvchilar: {len(rows)} ta</b>", parse_mode="HTML")
     
     for idx, row in enumerate(rows, 1):
         uid = row[0]
@@ -243,19 +238,19 @@ async def show_users_list(message: types.Message):
         
         status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
         
-        text += (
+        text = (
             f"<b>{idx}.</b> 🆔 ID: <code>{uid}</code>\n"
             f"📧 Email: <code>{email}</code>\n"
-            f"⚠️ Qoidabuzarlik: <b>{violations} ta</b> | {status_text}\n"
-            f"-----------------------------------\n"
+            f"⚠️ Qoidabuzarlik: <b>{violations} ta</b> | {status_text}"
         )
         
-        btn_text = f"🚫 Ban ({uid}) [{violations} ta]" if is_banned == 0 else f"✅ Unban ({uid})"
+        builder = InlineKeyboardBuilder()
+        btn_text = f"🚫 Ban qilish ({violations} ta)" if is_banned == 0 else "✅ Unban qilish"
         callback_action = f"ban_{uid}" if is_banned == 0 else f"unban_{uid}"
+        
         builder.button(text=btn_text, callback_data=callback_action)
-    
-    builder.adjust(1)
-    await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
+        
+        await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
 @dp.callback_query(F.data.startswith("ban_") | F.data.startswith("unban_"))
 async def process_ban_unban(callback: types.CallbackQuery):
@@ -282,13 +277,32 @@ async def process_ban_unban(callback: types.CallbackQuery):
     await callback.answer(msg, show_alert=True)
     
     try:
-        await callback.message.delete()
-    except Exception:
-        pass
-    
-    fake_message = callback.message
-    fake_message.from_user = callback.from_user
-    await show_users_list(fake_message)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT email, violations, is_banned FROM verified_users WHERE user_id = %s', (uid,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if row:
+            email = row[0] if row[0] else "Noma'lum"
+            violations = row[1] if row[1] is not None else 0
+            is_banned = row[2] if row[2] is not None else 0
+            status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
+            
+            updated_text = (
+                f"🆔 ID: <code>{uid}</code>\n"
+                f"📧 Email: <code>{email}</code>\n"
+                f"⚠️ Qoidabuzarlik: <b>{violations} ta</b> | {status_text}"
+            )
+            builder = InlineKeyboardBuilder()
+            btn_text = f"🚫 Ban qilish ({violations} ta)" if is_banned == 0 else "✅ Unban qilish"
+            callback_action = f"ban_{uid}" if is_banned == 0 else f"unban_{uid}"
+            builder.button(text=btn_text, callback_data=callback_action)
+            
+            await callback.message.edit_text(updated_text, parse_mode="HTML", reply_markup=builder.as_markup())
+    except Exception as e:
+        print(f"Xabarni yangilashda xato: {e}")
 
 @dp.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
@@ -330,7 +344,7 @@ async def process_broadcast(message: types.Message, state: FSMContext):
     await status_msg.edit_text(
         f"✅ **Xabar tarqatish yakunlandi!** 🚀\n\n"
         f"👥 Muvaffaqiyatli: {success_count} ta\n"
-        f"⚠️ Xatolik: {fail_count} ta",
+        f"⚠️️ Xatolik: {fail_count} ta",
         parse_mode="Markdown"
     )
     await state.set_state(AuthState.authenticated)
@@ -370,7 +384,7 @@ async def process_email(message: types.Message, state: FSMContext):
             await message.answer(f"📩 **{email}** manziliga kod yuborildi! 🔑 Kodni kiriting:", parse_mode="Markdown")
             await state.set_state(AuthState.waiting_for_code)
         else:
-            await message.answer(f"⚠️ Xatolik (Brevo): {response.text}")
+            await message.answer(f"⚠️️ Xatolik (Brevo): {response.text}")
     except Exception as e:
         await message.answer(f"⚠️ Tarmoq xatoligi: {str(e)}")
 
@@ -427,7 +441,7 @@ async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
     
     if is_user_banned(user_id):
-        await message.answer("❌ Siz botdan bloklangansiz!")
+        await message.answer("❌ Siz bloklangansiz!")
         return
     
     text_lower = message.text.lower()
