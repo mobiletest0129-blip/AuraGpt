@@ -344,7 +344,7 @@ async def process_broadcast(message: types.Message, state: FSMContext):
     await status_msg.edit_text(
         f"✅ **Xabar tarqatish yakunlandi!** 🚀\n\n"
         f"👥 Muvaffaqiyatli: {success_count} ta\n"
-        f"⚠️️ Xatolik: {fail_count} ta",
+        f"⚠ Xatolik: {fail_count} ta",
         parse_mode="Markdown"
     )
     await state.set_state(AuthState.authenticated)
@@ -384,7 +384,7 @@ async def process_email(message: types.Message, state: FSMContext):
             await message.answer(f"📩 **{email}** manziliga kod yuborildi! 🔑 Kodni kiriting:", parse_mode="Markdown")
             await state.set_state(AuthState.waiting_for_code)
         else:
-            await message.answer(f"⚠️️ Xatolik (Brevo): {response.text}")
+            await message.answer(f"⚠ Xatolik (Brevo): {response.text}")
     except Exception as e:
         await message.answer(f"⚠️ Tarmoq xatoligi: {str(e)}")
 
@@ -492,7 +492,7 @@ async def main():
     Thread(target=run_flask).start()
     print("Bot ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.polling(bot)
+    await dp.start_polling(bot)  # To'g'rilangan joyi
 
 if __name__ == "__main__":
     asyncio.run(main())
