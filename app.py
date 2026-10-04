@@ -20,14 +20,15 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
 TOKEN = os.getenv("BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") # Groq API kalitingiz
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Groq modellari ro'yxati (fallback uchun)
+# Нужная модель с вашего скриншота стоит на первом месте[span_1](start_span)[span_1](end_span)!
 MODELS = [
+    "openai/gpt-oss-120b",
     "llama-3.1-70b-versatile",
     "llama-3.1-8b-instant",
     "mixtral-8x7b-32768"
@@ -83,7 +84,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
     if is_user_banned(user_id):
-        await message.answer("❌ Kechirasiz, siz bloklangansiz! 🚫")
+        await message.answer("❌ Kechirasiz, siz botdan bloklangansiz! 🚫")
         return
 
     if is_user_verified(user_id):
@@ -149,7 +150,7 @@ async def process_email(message: types.Message, state: FSMContext):
         else:
             await message.answer(f"⚠️ Xatolik yuz berdi: {response.text} ❌")
     except Exception as e:
-        await message.answer(f"⚠️ Tarmoq xatoligi: {str(e)} 🔌")
+        await message.answer(f"⚠️️ Tarmoq xatoligi: {str(e)} 🔌")
 
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
@@ -213,11 +214,11 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️️ Xatolik yuz berdi:\n`{last_error}` ❌", parse_mode="Markdown")
+        await message.answer(f"⚠ Xatolik yuz berdi:\n`{last_error}` ❌", parse_mode="Markdown")
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot Groq API va cheksiz xotira bilan ishga tushdi! 🚀🤖✨")
+    print("Bot `openai/gpt-oss-120b` modeli bilan ishga tushdi! 🚀🤖✨")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
