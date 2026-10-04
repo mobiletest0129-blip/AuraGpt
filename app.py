@@ -21,37 +21,25 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
 TOKEN = os.getenv("BOT_TOKEN")
-WORMGPT_API_KEY = "wgpt_724da8943f81918aec6daeb9fa741dd7aededbf44744c5d7"
+WORMGPT_API_KEY = "wgpt_a13a4cbe1b90267ad472d2a4563cd230dd539c25d3abeca7"
 WORMGPT_URL = "https://wormgpt.app/v1/chat/completions"
 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Все возможные модели добавлены для автоматического перебора:
-MODELS_LIST = [
-    "wormgpt",
-    "gpt-4o",
-    "gpt-4o-mini",
-    "gpt-4-turbo",
-    "gpt-4",
-    "gpt-3.5-turbo",
-    "gpt-3.5",
-    "text-davinci-003"
-]
+# --- Model to'g'ridan-to'g'ri ko'rsatildi ---
+MODELS_LIST = ["wormgpt-v1", "wormgpt", "gpt-3.5-turbo", "gpt-4", "default", "chat-completion"]
 
-# --- Список администраторов ---
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- База данных в памяти ---
-verified_users_db = {}   # {user_id: email}
-banned_users_set = set() # {user_id, ...}
-user_violations_db = {}  # {user_id: violations_count}
-chat_histories_db = {}   # {user_id: [messages]}
+verified_users_db = {}   
+banned_users_set = set() 
+user_violations_db = {}  
+chat_histories_db = {}   
 
-# --- Список нецензурных слов ---
 BAD_WORDS = [
     "ahmoq", "tentak", "gandon", "dalbayob", "chmo", "jalab", 
     "qo'toq", "sikaman", "skaman", "qotoq", "haromi", "iflos", "jinni", "eshak", 
@@ -148,8 +136,8 @@ async def cmd_help(message: types.Message):
         help_text += (
             "\n\n👑 **Admin buyruqlari:**\n"
             "• /stats — Bot statistikasi\n"
-            "• /users — Tizimdagi foydalanuvchilar ro'yxati va ularni tugma orqali Ban/Unban qilish\n"
-            "• `/ban id:123456778` — Foydalanuvchini ban qilish, qayta yuborilsa unban qilish (toggle)\n"
+            "• /users — Tizimdagi foydalanuvchilar ro'yxati\n"
+            "• `/ban id:123456778` — Foydalanuvchini ban qilish\n"
             "• /broadcast — Barcha foydalanuvchilarga xabar tarqatish"
         )
         
@@ -528,7 +516,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot со всеми моделями запущен! 🚀🤖")
+    print("Bot 'wormgpt-v1' modeli bilan ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
