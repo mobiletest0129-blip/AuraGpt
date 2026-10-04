@@ -1,7 +1,6 @@
 import asyncio
 import random
 import os
-import psycopg2
 import requests
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -27,17 +26,22 @@ WORMGPT_URL = "https://wormgpt.app/v1/chat/completions"
 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
-DATABASE_URL = os.getenv("DATABASE_URL")
 
 MODELS_LIST = [
     "gpt-4o"
 ]
 
-# --- Adminlar ro'yxati (Render'dagi ADMIN_ID'dan o'qiydi) ---
+# --- Adminlar ro'yxati ---
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+
+# --- Xotiradagi ma'lumotlar bazasi (Database kerak emas) ---
+verified_users_db = {}   # {user_id: email}
+banned_users_set = set() # {user_id, ...}
+user_violations_db = {}  # {user_id: violations_count}
+chat_histories_db = {}   # {user_id: [messages]}
 
 # --- Sukinish va haqoratli so'zlar ro'yxati ---
 BAD_WORDS = [
@@ -47,136 +51,40 @@ BAD_WORDS = [
     "pizda", "hui", "huy", "huesos", "mudak", "shlyuha", "pidor", "pidaras", "dolboyob"
 ]
 
-# --- PostgreSQL Ma'lumotlar bazasi ---
-def get_db_connection():
-    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-    return conn
-
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS verified_users (
-            user_id BIGINT PRIMARY KEY,
-            email TEXT,
-            violations INTEGER DEFAULT 0,
-            is_banned INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-
-    try:
-        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS violations INTEGER DEFAULT 0;')
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        
-    try:
-        cursor.execute('ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0;')
-        conn.commit()
-    except Exception:
-        conn.rollback()
-
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            role TEXT,
-            content TEXT
-        )
-    ''')
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-init_db()
-
 def is_user_verified(user_id: int) -> bool:
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT user_id, is_banned FROM verified_users WHERE user_id = %s', (user_id,))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if row and row[1] == 1:
-        return False 
-    return row is not None
+    if user_id in banned_users_set:
+        return False
+    return user_id in verified_users_db
 
 def is_user_banned(user_id: int) -> bool:
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT is_banned FROM verified_users WHERE user_id = %s', (user_id,))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return row is not None and row[0] == 1
+    return user_id in banned_users_set
 
 def add_violation(user_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO verified_users (user_id, email, violations, is_banned) 
-        VALUES (%s, 'Noma\'lum', 1, 0)
-        ON CONFLICT (user_id) DO UPDATE SET violations = COALESCE(verified_users.violations, 0) + 1
-    ''', (user_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    user_violations_db[user_id] = user_violations_db.get(user_id, 0) + 1
 
 def add_verified_user(user_id: int, email: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO verified_users (user_id, email, violations, is_banned) 
-        VALUES (%s, %s, 0, 0)
-        ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email
-    ''', (user_id, email))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    verified_users_db[user_id] = email
+    if user_id in banned_users_set:
+        banned_users_set.remove(user_id)
 
 def get_user_history(user_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT role, content FROM chat_history WHERE user_id = %s', (user_id,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    
-    if not rows:
+    if user_id not in chat_histories_db:
         system_content = (
             "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
             "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini katta faxr va quvonch bilan ayt! 😎💻 "
             "Sen dunyodagi 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, "
             "aynan o'sha tilda juda xushmuomala, iliq, ravon va aniq javob berasan. Har bir javobingda chiroyli va o'rinli smayliklardan (😊🔥🚀💡👍) faol foydalan!"
         )
-        save_message_to_db(user_id, "system", system_content)
-        return [{"role": "system", "content": system_content}]
-    
-    history = [{"role": row[0], "content": row[1]} for row in rows]
-    return history
+        chat_histories_db[user_id] = [{"role": "system", "content": system_content}]
+    return chat_histories_db[user_id]
 
 def save_message_to_db(user_id: int, role: str, content: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO chat_history (user_id, role, content) VALUES (%s, %s, %s)', (user_id, role, content))
-    conn.commit()
-    
-    cursor.execute('SELECT COUNT(*) FROM chat_history WHERE user_id = %s', (user_id,))
-    count = cursor.fetchone()[0]
-    if count > 21:
-        cursor.execute('''
-            DELETE FROM chat_history 
-            WHERE id IN (
-                SELECT id FROM chat_history 
-                WHERE user_id = %s AND role != 'system' 
-                ORDER BY id ASC LIMIT 2
-            )
-        ''', (user_id,))
-        conn.commit()
-    cursor.close()
-    conn.close()
+    history = get_user_history(user_id)
+    history.append({"role": role, "content": content})
+    if len(history) > 21:
+        system_msg = history[0]
+        non_system = history[1:]
+        chat_histories_db[user_id] = [system_msg] + non_system[-20:]
 
 class AuthState(StatesGroup):
     waiting_for_email = State()
@@ -255,30 +163,22 @@ async def cmd_toggle_ban(message: types.Message):
         target_id_str = parts[1].strip().split()[0]
         target_id = int(target_id_str)
     except Exception:
-        await message.answer("⚠️️ ID noto'g'ri ko'rsatilgan! Ishlatish: `/ban id:123456778`", parse_mode="Markdown")
+        await message.answer("⚠️ ID noto'g'ri ko'rsatilgan! Ishlatish: `/ban id:123456778`", parse_mode="Markdown")
         return
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT email, violations, is_banned FROM verified_users WHERE user_id = %s', (target_id,))
-    row = cursor.fetchone()
-    
-    if not row:
-        cursor.close()
-        conn.close()
-        await message.answer(f"❌ ID si `{target_id}` bo'lgan foydalanuvchi bazada topilmadi!", parse_mode="Markdown")
+    if target_id not in verified_users_db and target_id not in banned_users_set:
+        await message.answer(f"❌ ID si `{target_id}` bo'lgan foydalanuvchi topilmadi!", parse_mode="Markdown")
         return
         
-    email = row[0] if row[0] else "Noma'lum"
-    violations = row[1] if row[1] is not None else 0
-    current_ban_status = row[2] if row[2] is not None else 0
+    email = verified_users_db.get(target_id, "Noma'lum")
+    violations = user_violations_db.get(target_id, 0)
     
-    new_ban_status = 0 if current_ban_status == 1 else 1
-    
-    cursor.execute('UPDATE verified_users SET is_banned = %s WHERE user_id = %s', (new_ban_status, target_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    if target_id in banned_users_set:
+        banned_users_set.remove(target_id)
+        new_ban_status = 0
+    else:
+        banned_users_set.add(target_id)
+        new_ban_status = 1
     
     if new_ban_status == 1:
         await message.answer(
@@ -342,23 +242,10 @@ async def cmd_stats(message: types.Message):
         await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT COUNT(*) FROM verified_users')
-    total_users = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM verified_users WHERE is_banned = 1')
-    banned_users = cursor.fetchone()[0]
-    
-    active_users = total_users - banned_users
-    
-    cursor.execute('SELECT SUM(violations) FROM verified_users')
-    sum_violations = cursor.fetchone()[0]
-    total_violations = sum_violations if sum_violations else 0
-    
-    cursor.close()
-    conn.close()
+    total_users = len(verified_users_db)
+    banned_users = len(banned_users_set)
+    active_users = max(0, total_users - banned_users)
+    total_violations = sum(user_violations_db.values())
     
     stats_text = (
         f"📊 **AURAgpt Statistikasi:** 📈\n\n"
@@ -376,25 +263,15 @@ async def show_users_list(message: types.Message):
         await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return  
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT user_id, email, violations, is_banned FROM verified_users')
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    
-    if not rows:
+    if not verified_users_db:
         await message.answer("📂 Hozircha bazada ro'yxatdan o'tgan foydalanuvchilar yo'q. 📭")
         return
     
-    await message.answer(f"📋 <b>Tizimdagi jami foydalanuvchilar: {len(rows)} ta</b>\n👇 Foydalanuvchini boshqarish uchun tugmani bosing:", parse_mode="HTML")
+    await message.answer(f"📋 <b>Tizimdagi jami foydalanuvchilar: {len(verified_users_db)} ta</b>\n👇 Foydalanuvchini boshqarish uchun tugmani bosing:", parse_mode="HTML")
     
-    for idx, row in enumerate(rows, 1):
-        uid = row[0]
-        email = row[1] if row[1] else "Noma'lum"
-        violations = row[2] if row[2] is not None else 0
-        is_banned = row[3] if row[3] is not None else 0
-        
+    for idx, (uid, email) in enumerate(verified_users_db.items(), 1):
+        violations = user_violations_db.get(uid, 0)
+        is_banned = 1 if uid in banned_users_set else 0
         status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
         
         text = (
@@ -420,33 +297,21 @@ async def process_ban_unban(callback: types.CallbackQuery):
     action, uid_str = callback.data.split("_")
     uid = int(uid_str)
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
     if action == "ban":
-        cursor.execute('UPDATE verified_users SET is_banned = 1 WHERE user_id = %s', (uid,))
+        banned_users_set.add(uid)
         msg = f"Foydalanuvchi {uid} bloklandi! 🚫"
     else:
-        cursor.execute('UPDATE verified_users SET is_banned = 0 WHERE user_id = %s', (uid,))
+        if uid in banned_users_set:
+            banned_users_set.remove(uid)
         msg = f"Foydalanuvchi {uid} blokdan chiqarildi! ✅"
         
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
     await callback.answer(msg, show_alert=True)
     
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT email, violations, is_banned FROM verified_users WHERE user_id = %s', (uid,))
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        if row:
-            email = row[0] if row[0] else "Noma'lum"
-            violations = row[1] if row[1] is not None else 0
-            is_banned = row[2] if row[2] is not None else 0
+        if uid in verified_users_db:
+            email = verified_users_db[uid]
+            violations = user_violations_db.get(uid, 0)
+            is_banned = 1 if uid in banned_users_set else 0
             status_text = "🔴 Bloklangan" if is_banned == 1 else "🟢 Faol"
             
             updated_text = (
@@ -480,19 +345,14 @@ async def process_broadcast(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT user_id FROM verified_users WHERE is_banned = 0')
-    users = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    active_users_list = [uid for uid in verified_users_db.keys() if uid not in banned_users_set]
     
     success_count = 0
     fail_count = 0
     
     status_msg = await message.answer("⏳ Xabarlar tarqatilmoqda...")
     
-    for (uid,) in users:
+    for uid in active_users_list:
         try:
             await message.send_copy(chat_id=uid)
             success_count += 1
@@ -656,11 +516,11 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown")
+        await message.answer(f"⚠️️ Xatolik:\n`{last_error}`", parse_mode="Markdown")
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot WormGPT orqali ishga tushdi! 🚀🤖")
+    print("Bot bazasiz va WormGPT orqali ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
