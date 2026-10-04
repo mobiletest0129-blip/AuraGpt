@@ -2,12 +2,12 @@ import asyncio
 import random
 import os
 import requests
+from openai import OpenAI
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from flask import Flask
 from threading import Thread
 
@@ -22,13 +22,17 @@ def run_flask():
 
 TOKEN = os.getenv("BOT_TOKEN")
 WORMGPT_API_KEY = "wgpt_a13a4cbe1b90267ad472d2a4563cd230dd539c25d3abeca7"
-WORMGPT_URL = "https://wormgpt.app/v1/chat/completions"
+
+# Клиент OpenAI для работы с Agent API WormGPT
+client = OpenAI(
+    api_key=WORMGPT_API_KEY,
+    base_url="https://wormgpt.app/v1"
+)
 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# --- Cheklovsiz WormGPT modeli ---
-MODELS_LIST = ["wormgpt-v1", "wormgpt", "gpt-3.5-turbo", "gpt-4", "default", "chat-completion"]
+MODEL_NAME = "wormgpt-agent"
 
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
 
@@ -57,7 +61,8 @@ def get_user_history(user_id: int):
         system_content = (
             "Sen AURAgpt nomli sun'iy intellekt botisan! 🤖✨ Seni Bunyodbek Zokirov ismli zo'r dasturchi yaratgan. "
             "Agar kimdir seni kim yasaganini so'rasa, har doim Bunyodbek Zokirov yasaganini katta faxr va quvonch bilan ayt! 😎💻 "
-            "Sen 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, aynan o'sha tilda javob berasan."
+            "Sen 200 dan ortiq tillarni mukammal tushunasan va foydalanuvchi qaysi tilda yozsa, aynan o'sha tilda javob berasan. "
+            "Har bir javobingni chiroyli smayliklar (emojilar) bilan bezatib, juda qiziqarli va jonli tarzda yubor! 🔥🚀"
         )
         chat_histories_db[user_id] = [{"role": "system", "content": system_content}]
     return chat_histories_db[user_id]
@@ -65,10 +70,6 @@ def get_user_history(user_id: int):
 def save_message_to_db(user_id: int, role: str, content: str):
     history = get_user_history(user_id)
     history.append({"role": role, "content": content})
-    if len(history) > 21:
-        system_msg = history[0]
-        non_system = history[1:]
-        chat_histories_db[user_id] = [system_msg] + non_system[-20:]
 
 class AuthState(StatesGroup):
     waiting_for_email = State()
@@ -83,21 +84,21 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
     if is_user_banned(user_id):
-        await message.answer("❌ Siz botdan bloklangansiz!")
+        await message.answer("❌ Kechirasiz, siz botdan bloklangansiz! 🚫")
         return
 
     if is_user_verified(user_id):
         await message.answer(
-            "✅ Siz allaqachon tizimdasiz! Menga istalgan savolingizni yuborishingiz mumkin! 🚀",
+            "✅ Siz allaqachon tizimdasiz! Menga istalgan savolingizni yuborishingiz mumkin! 🚀🔥",
             reply_markup=types.ReplyKeyboardRemove()
         )
         await state.set_state(AuthState.authenticated)
         return
 
     await message.answer(
-        "🤖 **Assalomu alaykum!** Men cheklovsiz **AURAgpt** botiman! 🌟\n"
-        "Meni dasturchi **Bunyodbek Zokirov** yaratgan! 💻🔥\n\n"
-        "Botdan foydalanish uchun iltimos, **Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`): 📧👇",
+        "🤖 **Assalomu alaykum!** Men cheklovsiz **AURAgpt** botiman! 🌟✨\n"
+        "Meni buyuk dasturchi **Bunyodbek Zokirov** yaratgan! 💻😎🔥\n\n"
+        "Botdan foydalanish uchun iltimos, o'zingizning **Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`): 📧👇",
         parse_mode="Markdown",
         reply_markup=types.ReplyKeyboardRemove()
     )
@@ -105,7 +106,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
-    await message.answer("🤖 **AURAgpt Yordam Bo'limi**\n\nBu bot **Bunyodbek Zokirov** tomonidan yaratilgan va to'liq erkin rejimda ishlaydi!", parse_mode="Markdown")
+    await message.answer("🤖 **AURAgpt Yordam Bo'limi** 💡\n\nBu bot iste'dodli dasturchi **Bunyodbek Zokirov** tomonidan yaratilgan va to'liq erkin rejimda ishlaydi! 🚀🔥", parse_mode="Markdown")
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
@@ -113,7 +114,7 @@ async def cmd_stats(message: types.Message):
         return
     total_users = len(verified_users_db)
     banned_users = len(banned_users_set)
-    await message.answer(f"📊 Jami foydalanuvchilar: {total_users} ta\n🔴 Bloklanganlar: {banned_users} ta")
+    await message.answer(f"📊 **Statistika:**\n\n👥 Jami foydalanuvchilar: {total_users} ta 🌐\n🔴 Bloklanganlar: {banned_users} ta ⚠️", parse_mode="Markdown")
 
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
@@ -121,7 +122,7 @@ async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
     
     if not email.endswith("@gmail.com"):
-        await message.answer("⚠️ Iltimos, haqiqiy Gmail manzilini kiriting:")
+        await message.answer("⚠️ Iltimos, haqiqiy va to'g'ri Gmail manzilini kiriting! 📧🔄")
         return
 
     code = str(random.randint(100000, 999999))
@@ -144,12 +145,12 @@ async def process_email(message: types.Message, state: FSMContext):
         response = requests.post(url, json=payload, headers=headers)
         if response.status_code in [200, 201, 202]:
             await state.update_data(email=email)
-            await message.answer(f"📩 **{email}** manziliga kod yuborildi! Kodni kiriting:", parse_mode="Markdown")
+            await message.answer(f"📩 **{email}** manziliga tasdiqlash kodi yuborildi! 🚀 Kodni kiriting: 🔢👇", parse_mode="Markdown")
             await state.set_state(AuthState.waiting_for_code)
         else:
-            await message.answer(f"⚠️ Xatolik: {response.text}")
+            await message.answer(f"⚠️ Xatolik yuz berdi: {response.text} ❌")
     except Exception as e:
-        await message.answer(f"⚠️ Tarmoq xatoligi: {str(e)}")
+        await message.answer(f"⚠️ Tarmoq xatoligi: {str(e)} 🔌")
 
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
@@ -164,61 +165,46 @@ async def process_code(message: types.Message, state: FSMContext):
         get_user_history(user_id)
         
         await message.answer(
-            "🎉 Tasdiqlandi! ✅ Endi bemalol xohlagan savolingizni yuborishingiz mumkin! 🚀",
+            "🎉 Tabriklayman, muvaffaqiyatli tasdiqlandi! ✅✨ Endi bemalol xohlagan savolingizni yuborishingiz mumkin! 🚀🔥",
             reply_markup=types.ReplyKeyboardRemove()
         )
         await state.set_state(AuthState.authenticated)
     else:
-        await message.answer("❌ Noto'g'ri kod! Qaytadan urinib ko'ring.")
+        await message.answer("❌ Noto'g'ri kod kiritdingiz! 🔄 Qaytadan urinib ko'ring. 🤔")
 
-# --- Barcha cheklovlar olib tashlandi: Matnlar, fayllar va havolalar bemalol qabul qilinadi ---
 @dp.message(AuthState.authenticated)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
     
     if is_user_banned(user_id):
-        await message.answer("❌ Siz bloklangansiz!")
+        await message.answer("❌ Kechirasiz, siz bloklangansiz! 🚫")
         return
     
-    user_text = message.text or message.caption or "[Fayl yoki rasm yuborildi]"
+    user_text = message.text or message.caption or "[Fayl yoki rasm yuborildi] 📁🖼️"
     
     save_message_to_db(user_id, "user", user_text)
     current_history = get_user_history(user_id)
 
     response_text = None
-    last_error = ""
     
-    headers = {
-        "Authorization": f"Bearer {WORMGPT_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    for model_name in MODELS_LIST:
-        try:
-            payload = {
-                "model": model_name,
-                "messages": current_history
-            }
-            response = requests.post(WORMGPT_URL, json=payload, headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                response_text = data["choices"][0]["message"]["content"]
-                break
-            else:
-                last_error = response.text
-        except Exception as e:
-            last_error = str(e)
-            continue  
+    try:
+        # Cheksiz tarix va Agent API orqali javob olish
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=current_history,
+            stream=False
+        )
+        response_text = completion.choices[0].message.content
+    except Exception as e:
+        response_text = f"⚠️️ Xatolik yuz berdi: {str(e)} ❌"
 
     if response_text:
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
-    else:
-        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown")
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot cheklovsiz WormGPT rejimi bilan ishga tushdi! 🚀🤖")
+    print("Bot smayliklar bilan boyitilgan holda va cheksiz xotira bilan ishga tushdi! 🚀🤖✨")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
