@@ -27,26 +27,31 @@ WORMGPT_URL = "https://wormgpt.app/v1/chat/completions"
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Model nomlarini kengaytirilgan ro'yxatga o'zgartirdik:
+# Все возможные модели добавлены для автоматического перебора:
 MODELS_LIST = [
-    "gpt-4",
+    "wormgpt",
+    "gpt-4o",
+    "gpt-4o-mini",
     "gpt-4-turbo",
-    "gpt-3.5-turbo"
+    "gpt-4",
+    "gpt-3.5-turbo",
+    "gpt-3.5",
+    "text-davinci-003"
 ]
 
-# --- Adminlar ro'yxati ---
+# --- Список администраторов ---
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- Xotiradagi ma'lumotlar bazasi ---
+# --- База данных в памяти ---
 verified_users_db = {}   # {user_id: email}
 banned_users_set = set() # {user_id, ...}
 user_violations_db = {}  # {user_id: violations_count}
 chat_histories_db = {}   # {user_id: [messages]}
 
-# --- Sukinish va haqoratli so'zlar ro'yxati ---
+# --- Список нецензурных слов ---
 BAD_WORDS = [
     "ahmoq", "tentak", "gandon", "dalbayob", "chmo", "jalab", 
     "qo'toq", "sikaman", "skaman", "qotoq", "haromi", "iflos", "jinni", "eshak", 
@@ -523,7 +528,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot yangi modellar ro'yxati bilan ishga tushdi! 🚀🤖")
+    print("Bot со всеми моделями запущен! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
