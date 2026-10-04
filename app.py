@@ -33,7 +33,6 @@ MODELS = [
     "mixtral-8x7b-32768"
 ]
 
-# Admin ID raqamlari endi Render Environment Variables orqali o'qiladi (vergul bilan ajratib yoziladi)
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "").split(",") if i.strip()]
 
 bot = Bot(token=TOKEN)
@@ -114,6 +113,7 @@ async def cmd_help(message: types.Message):
         "• /help - Yordam olish ℹ️\n\n"
         "🛠 **Admin buyruqlari:**\n"
         "• /stats - Bot statistikasi 📊\n"
+        "• /users - Real foydalanuvchilar ro'yxati 📋\n"
         "• /ban [user_id] - Foydalanuvchini bloklash 🔴\n"
         "• /unban [user_id] - Blokdan chiqarish 🟢\n"
         "• /broadcast - Barcha foydalanuvchilarga xabar yuborish 📢",
@@ -127,6 +127,27 @@ async def cmd_stats(message: types.Message):
     total_users = len(verified_users_db)
     banned_users = len(banned_users_set)
     await message.answer(f"📊 **Statistika:**\n\n👥 Jami foydalanuvchilar: {total_users} ta 🌐\n🔴 Bloklanganlar: {banned_users} ta ⚠️", parse_mode="Markdown")
+
+# --- REAL FOYDALANUVCHILAR RO'YXATINI CHIQARUVCHI BUYRUQ ---
+@dp.message(Command("users"))
+async def cmd_users(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    if not verified_users_db:
+        await message.answer("📁 Hozircha tizimda ro'yxatdan o'tgan foydalanuvchilar yo'q.")
+        return
+
+    text = "📋 **Haqiqiy foydalanuvchilar ro'yxati:**\n\n"
+    for idx, (uid, email) in enumerate(verified_users_db.items(), 1):
+        status = "🔴 Bloklangan" if uid in banned_users_set else "🟢 Faol"
+        text += f"{idx}. ID: `{uid}` | E-mail: {email} | {status}\n"
+    
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n... (ro'yxat juda uzun)"
+        
+    await message.answer(text, parse_mode="Markdown")
+# -----------------------------------------------------------
 
 @dp.message(Command("ban"))
 async def cmd_ban(message: types.Message):
@@ -159,7 +180,7 @@ async def cmd_unban(message: types.Message):
             banned_users_set.remove(target_id)
             await message.answer(f"✅ `{target_id}` ID raqamli foydalanuvchi blokdan chiqarildi! 🟢", parse_mode="Markdown")
         else:
-            await message.answer("⚠️️ Bu foydalanuvchi bloklanganlar ro'yxatida yo'q.")
+            await message.answer("⚠️ Bu foydalanuvchi bloklanganlar ro'yxatida yo'q.")
     except ValueError:
         await message.answer("❌ Noto'g'ri ID format!")
 
@@ -293,7 +314,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot xavfsiz holatda ishga tushdi! 🚀🤖✨")
+    print("Bot /users buyrug'i bilan mukammal ishga tushdi! 🚀🤖✨")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
