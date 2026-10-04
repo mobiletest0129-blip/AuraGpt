@@ -9,7 +9,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from openai import OpenAI  # WormGPT OpenAI formatida ishlagani uchun OpenAI kutubxonasi ishlatiladi
 from flask import Flask
 from threading import Thread
 
@@ -23,28 +22,24 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
 TOKEN = os.getenv("BOT_TOKEN")
-WORMGPT_API_KEY = "wgpt_724da8943f81918aec6daeb9fa741dd7aededbf44744c5d7" # WormGPT API kalitingiz
+WORMGPT_API_KEY = "wgpt_724da8943f81918aec6daeb9fa741dd7aededbf44744c5d7"
+WORMGPT_URL = "https://wormgpt.app/v1/chat/completions"
+
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# WormGPT API klienti (OpenAI standartiga asoslangan)
-ai_client = OpenAI(
-    api_key=WORMGPT_API_KEY,
-    base_url="https://wormgpt.app/v1"
-)
-
 MODELS_LIST = [
-    "gpt-4o"  # WormGPT qo'llab-quvvatlaydigan model (yoki mavjud model nomini yozishingiz mumkin)
+    "gpt-4o"
 ]
 
-# --- Adminlar ro'yxati (Render'dagi ADMIN_ID'dan o'qiydi yoki standart qiymat oladi) ---
+# --- Adminlar ro'yxati (Render'dagi ADMIN_ID'dan o'qiydi) ---
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- Kengaytirilgan sukinish va haqoratli so'zlar ro'yxati ---
+# --- Sukinish va haqoratli so'zlar ro'yxati ---
 BAD_WORDS = [
     "ahmoq", "tentak", "gandon", "dalbayob", "chmo", "jalab", 
     "qo'toq", "sikaman", "skaman", "qotoq", "haromi", "iflos", "jinni", "eshak", 
@@ -52,7 +47,7 @@ BAD_WORDS = [
     "pizda", "hui", "huy", "huesos", "mudak", "shlyuha", "pidor", "pidaras", "dolboyob"
 ]
 
-# --- PostgreSQL Ma'lumotlar bazasini ulash va yaratish ---
+# --- PostgreSQL Ma'lumotlar bazasi ---
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode='require')
     return conn
@@ -218,7 +213,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(AuthState.waiting_for_email)
 
-# --- /help buyrug'i ---
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     user_id = message.from_user.id
@@ -245,7 +239,6 @@ async def cmd_help(message: types.Message):
         
     await message.answer(help_text, parse_mode="Markdown")
 
-# --- /ban id:ID buyrug'i (Toggle: Ban/Unban) ---
 @dp.message(Command("ban"))
 async def cmd_toggle_ban(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
@@ -262,7 +255,7 @@ async def cmd_toggle_ban(message: types.Message):
         target_id_str = parts[1].strip().split()[0]
         target_id = int(target_id_str)
     except Exception:
-        await message.answer("⚠️ ID noto'g'ri ko'rsatilgan! Ishlatish: `/ban id:123456778`", parse_mode="Markdown")
+        await message.answer("⚠️️ ID noto'g'ri ko'rsatilgan! Ishlatish: `/ban id:123456778`", parse_mode="Markdown")
         return
     
     conn = get_db_connection()
@@ -304,7 +297,6 @@ async def cmd_toggle_ban(message: types.Message):
             parse_mode="HTML"
         )
 
-# --- /feedback buyrug'i ---
 @dp.message(Command("feedback"))
 async def cmd_feedback(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -344,7 +336,6 @@ async def process_feedback(message: types.Message, state: FSMContext):
         
     await state.set_state(AuthState.authenticated)
 
-# --- /stats buyrug'i ---
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
@@ -379,7 +370,6 @@ async def cmd_stats(message: types.Message):
     
     await message.answer(stats_text, parse_mode="Markdown")
 
-# --- /users buyrug'i va tugmalar ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
@@ -590,7 +580,6 @@ async def process_code(message: types.Message, state: FSMContext):
         add_violation(user_id)
         await message.answer("❌ Noto'g'ri kod! Qoidabuzarlik yozildi. Qayta urinib ko'ring. 🔄")
 
-# --- Fayllarni bloklash va qoidabuzarlik yozish ---
 @dp.message(AuthState.authenticated, F.document | F.audio | F.video | F.photo)
 async def check_bad_files(message: types.Message):
     user_id = message.from_user.id
@@ -606,7 +595,6 @@ async def check_bad_files(message: types.Message):
         
     await message.answer("⚠️ **Diqqat!** Botga APK, EXE, iOS (.ipa) yoki boshqa turdagi fayllarni yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
 
-# --- Matnli xabarlar va WormGPT bilan muloqot ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -641,15 +629,25 @@ async def chat_with_ai(message: types.Message):
 
     response_text = None
     last_error = ""
+    
+    headers = {
+        "Authorization": f"Bearer {WORMGPT_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
     for model_name in MODELS_LIST:
         try:
-            # WormGPT API orqali javob olish (OpenAI formatida)
-            completion = ai_client.chat.completions.create(
-                model=model_name,
-                messages=current_history
-            )
-            response_text = completion.choices[0].message.content
-            break  
+            payload = {
+                "model": model_name,
+                "messages": current_history
+            }
+            response = requests.post(WORMGPT_URL, json=payload, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                response_text = data["choices"][0]["message"]["content"]
+                break
+            else:
+                last_error = response.text
         except Exception as e:
             last_error = str(e)
             continue  
@@ -658,7 +656,7 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown")
 
 async def main():
     Thread(target=run_flask).start()
