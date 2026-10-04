@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from groq import Groq
+from openai import OpenAI  # WormGPT OpenAI formatida ishlagani uchun OpenAI kutubxonasi ishlatiladi
 from flask import Flask
 from threading import Thread
 
@@ -23,35 +23,33 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
 TOKEN = os.getenv("BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+WORMGPT_API_KEY = "wgpt_724da8943f81918aec6daeb9fa741dd7aededbf44744c5d7" # WormGPT API kalitingiz
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# WormGPT API klienti (OpenAI standartiga asoslangan)
+ai_client = OpenAI(
+    api_key=WORMGPT_API_KEY,
+    base_url="https://wormgpt.app/v1"
+)
+
 MODELS_LIST = [
-    "openai/gpt-oss-120b"
+    "gpt-4o"  # WormGPT qo'llab-quvvatlaydigan model (yoki mavjud model nomini yozishingiz mumkin)
 ]
 
-admin_env = os.getenv("ADMIN_ID")
-ADMIN_ID = int(admin_env) if admin_env else 0  
+# --- Adminlar ro'yxati (Render'dagi ADMIN_ID'dan o'qiydi yoki standart qiymat oladi) ---
+ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- Kengaytirilgan sukinish va haqoratli so'zlar ro'yxati (O'zbek va Rus tillarida) ---
+# --- Kengaytirilgan sukinish va haqoratli so'zlar ro'yxati ---
 BAD_WORDS = [
-    # O'zbekcha haqorat va so'kinishlar
-    "ahmoq", "tentak", "gandon", "dalbayob", "chmo", "qnt", "qadam", "jalab", 
+    "ahmoq", "tentak", "gandon", "dalbayob", "chmo", "jalab", 
     "qo'toq", "sikaman", "skaman", "qotoq", "haromi", "iflos", "jinni", "eshak", 
-    "obrez", "bachkirlar", "qang'up", "kalamush", "qorin", "murdor", "laqma",
-    "qaraqurt", "qashqir", "itek", "kimsasiz", "so'zlamang", "bachagi", "quturgan",
-    
-    # Ruscha asosiy so'kinishlar
-    "blyad", "suka", "blat", "mraz", "gavno", "ebal", "ebat", "ebaniy",
-    "pizdat", "pizda", "hui", "huy", "huesos", "chmo", "mudak", "shlyuha", 
-    "ebany", "sukin", "syuka", "blatnoy", "pidor", "pidaras", "pirozhok",
-    "dolboyob", "gondon", "zlo", "uran", "tvot", "skot", "ublyudok", "vyrodok"
+    "blyad", "suka", "mraz", "gavno", "ebal", "ebat", "ebaniy",
+    "pizda", "hui", "huy", "huesos", "mudak", "shlyuha", "pidor", "pidaras", "dolboyob"
 ]
 
 # --- PostgreSQL Ma'lumotlar bazasini ulash va yaratish ---
@@ -233,12 +231,10 @@ async def cmd_help(message: types.Message):
         "📌 **Asosiy qoidalar:**\n"
         "• Botga so'kinish va haqoratli so'zlar yozish taqiqlangan 🚫\n"
         "• Shubhali havolalar (linklar) yuborish taqiqlangan ⚠️\n"
-        "• APK, EXE, iOS (.ipa) va boshqa fayllarni yuborish qat'iyan taqiqlangan va qoidabuzarlik sifatida yoziladi 🚫📂\n\n"
-        "💬 **Qanday foydalanish kerak?**\n"
-        "Shunchaki /start orqali pochtangizni tasdiqlang va istalgan tilda savollaringizni yo'llang! 🚀"
+        "• APK, EXE, iOS (.ipa) va boshqa fayllarni yuborish qat'iyan taqiqlangan va qoidabuzarlik sifatida yoziladi 🚫📂"
     )
     
-    if user_id == ADMIN_ID:
+    if user_id in ADMIN_IDS:
         help_text += (
             "\n\n👑 **Admin buyruqlari:**\n"
             "• /stats — Bot statistikasi\n"
@@ -252,12 +248,11 @@ async def cmd_help(message: types.Message):
 # --- /ban id:ID buyrug'i (Toggle: Ban/Unban) ---
 @dp.message(Command("ban"))
 async def cmd_toggle_ban(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return
     
     text = message.text.strip()
-    # Masalan: /ban id:123456778
     if "id:" not in text:
         await message.answer("⚠️ Noto'g'ri format! Ishlatish: `/ban id:123456778`", parse_mode="Markdown")
         return
@@ -285,7 +280,6 @@ async def cmd_toggle_ban(message: types.Message):
     violations = row[1] if row[1] is not None else 0
     current_ban_status = row[2] if row[2] is not None else 0
     
-    # Agar ban qilingan bo'lsa -> unban (0), agar unban bo'lsa -> ban (1)
     new_ban_status = 0 if current_ban_status == 1 else 1
     
     cursor.execute('UPDATE verified_users SET is_banned = %s WHERE user_id = %s', (new_ban_status, target_id))
@@ -333,10 +327,10 @@ async def process_feedback(message: types.Message, state: FSMContext):
     await message.answer("✅ Rahmat! Sizning xabaringiz adminga yuborildi. 🚀", parse_mode="Markdown")
     
     try:
-        if ADMIN_ID:
-            user_info = f"👤 Foydalanuvchi: @{message.from_user.username}" if message.from_user.username else f"👤 Foydalanuvchi ID: `{user_id}`"
+        user_info = f"👤 Foydalanuvchi: @{message.from_user.username}" if message.from_user.username else f"👤 Foydalanuvchi ID: `{user_id}`"
+        for admin_id in ADMIN_IDS:
             await bot.send_message(
-                chat_id=ADMIN_ID,
+                chat_id=admin_id,
                 text=(
                     f"📬 **YANGI FEEDBACK (XABAR)!** 💡\n\n"
                     f"{user_info}\n"
@@ -353,7 +347,7 @@ async def process_feedback(message: types.Message, state: FSMContext):
 # --- /stats buyrug'i ---
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return
     
@@ -388,7 +382,7 @@ async def cmd_stats(message: types.Message):
 # --- /users buyrug'i va tugmalar ---
 @dp.message(Command("users"))
 async def show_users_list(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         await message.answer("⚠️ Kechirasiz, bu buyruq faqat admin uchun! 🚫")
         return  
     
@@ -429,7 +423,7 @@ async def show_users_list(message: types.Message):
 
 @dp.callback_query(F.data.startswith("ban_") | F.data.startswith("unban_"))
 async def process_ban_unban(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
+    if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Siz admin emassiz!", show_alert=True)
         return
     
@@ -481,7 +475,7 @@ async def process_ban_unban(callback: types.CallbackQuery):
 
 @dp.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         return
     
     await message.answer(
@@ -493,7 +487,7 @@ async def cmd_broadcast(message: types.Message, state: FSMContext):
 
 @dp.message(AuthState.waiting_for_broadcast)
 async def process_broadcast(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         return
     
     conn = get_db_connection()
@@ -576,9 +570,9 @@ async def process_code(message: types.Message, state: FSMContext):
         add_verified_user(user_id, email)
         
         try:
-            if ADMIN_ID:
+            for admin_id in ADMIN_IDS:
                 await bot.send_message(
-                    chat_id=ADMIN_ID,
+                    chat_id=admin_id,
                     text=f"⚡ **JONLI XABARNOMA!** 🔔\n\n🟢 Yangi foydalanuvchi kirdi: `user_{user_id}`\n📧 Email: `{email}`",
                     parse_mode="Markdown"
                 )
@@ -596,7 +590,7 @@ async def process_code(message: types.Message, state: FSMContext):
         add_violation(user_id)
         await message.answer("❌ Noto'g'ri kod! Qoidabuzarlik yozildi. Qayta urinib ko'ring. 🔄")
 
-# --- Fayllarni (APK, EXE, iOS / .ipa va boshqalar) bloklash va qoidabuzarlik yozish ---
+# --- Fayllarni bloklash va qoidabuzarlik yozish ---
 @dp.message(AuthState.authenticated, F.document | F.audio | F.video | F.photo)
 async def check_bad_files(message: types.Message):
     user_id = message.from_user.id
@@ -612,7 +606,7 @@ async def check_bad_files(message: types.Message):
         
     await message.answer("⚠️ **Diqqat!** Botga APK, EXE, iOS (.ipa) yoki boshqa turdagi fayllarni yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
 
-# --- Matnli xabarlar va AI bilan muloqot ---
+# --- Matnli xabarlar va WormGPT bilan muloqot ---
 @dp.message(AuthState.authenticated, F.text)
 async def chat_with_ai(message: types.Message):
     user_id = message.from_user.id
@@ -623,7 +617,6 @@ async def chat_with_ai(message: types.Message):
     
     text_lower = message.text.lower()
     
-    # Havolalarni tekshirish (reklama linklari)
     if "http://" in text_lower or "https://" in text_lower or "www." in text_lower or ".ru" in text_lower or ".com" in text_lower and ("t.me/" not in text_lower):
         add_violation(user_id)
         try:
@@ -633,7 +626,6 @@ async def chat_with_ai(message: types.Message):
         await message.answer("⚠️ **Diqqat!** Botga shubhali yoki reklama havolalarini yuborish taqiqlangan! Qoidabuzarlik yozildi. 🚫")
         return
 
-    # So'kinishlarni tekshirish
     for word in BAD_WORDS:
         if word in text_lower:
             add_violation(user_id)
@@ -651,7 +643,8 @@ async def chat_with_ai(message: types.Message):
     last_error = ""
     for model_name in MODELS_LIST:
         try:
-            completion = groq_client.chat.completions.create(
+            # WormGPT API orqali javob olish (OpenAI formatida)
+            completion = ai_client.chat.completions.create(
                 model=model_name,
                 messages=current_history
             )
@@ -665,11 +658,11 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(f"⚠️ Xatolik:\n`{last_error}`", parse_mode="Markdown", reply_reply_markup=types.ReplyKeyboardRemove())
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot ishga tushdi! 🚀🤖")
+    print("Bot WormGPT orqali ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
