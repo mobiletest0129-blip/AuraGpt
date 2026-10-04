@@ -2,7 +2,6 @@ import asyncio
 import random
 import os
 import requests
-from openai import OpenAI
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -21,18 +20,18 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
 TOKEN = os.getenv("BOT_TOKEN")
-WORMGPT_API_KEY = "wgpt_a13a4cbe1b90267ad472d2a4563cd230dd539c25d3abeca7"
-
-# Клиент OpenAI для работы с Agent API WormGPT
-client = OpenAI(
-    api_key=WORMGPT_API_KEY,
-    base_url="https://wormgpt.app/v1"
-)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") # Groq API kalitingiz
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-MODEL_NAME = "wormgpt-agent"
+# Groq modellari ro'yxati (fallback uchun)
+MODELS = [
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768"
+]
 
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
 
@@ -84,7 +83,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
     if is_user_banned(user_id):
-        await message.answer("❌ Kechirasiz, siz botdan bloklangansiz! 🚫")
+        await message.answer("❌ Kechirasiz, siz bloklangansiz! 🚫")
         return
 
     if is_user_verified(user_id):
@@ -96,7 +95,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         return
 
     await message.answer(
-        "🤖 **Assalomu alaykum!** Men cheklovsiz **AURAgpt** botiman! 🌟✨\n"
+        "🤖 **Assalomu alaykum!** Men tezkor **AURAgpt** botiman! 🌟✨\n"
         "Meni buyuk dasturchi **Bunyodbek Zokirov** yaratgan! 💻😎🔥\n\n"
         "Botdan foydalanish uchun iltimos, o'zingizning **Gmail manzilingizni** kiriting (masalan: `ismingiz@gmail.com`): 📧👇",
         parse_mode="Markdown",
@@ -106,7 +105,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
-    await message.answer("🤖 **AURAgpt Yordam Bo'limi** 💡\n\nBu bot iste'dodli dasturchi **Bunyodbek Zokirov** tomonidan yaratilgan va to'liq erkin rejimda ishlaydi! 🚀🔥", parse_mode="Markdown")
+    await message.answer("🤖 **AURAgpt Yordam Bo'limi** 💡\n\nBu bot iste'dodli dasturchi **Bunyodbek Zokirov** tomonidan yaratilgan! 🚀🔥", parse_mode="Markdown")
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
@@ -186,25 +185,39 @@ async def chat_with_ai(message: types.Message):
     current_history = get_user_history(user_id)
 
     response_text = None
+    last_error = ""
     
-    try:
-        # Cheksiz tarix va Agent API orqali javob olish
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=current_history,
-            stream=False
-        )
-        response_text = completion.choices[0].message.content
-    except Exception as e:
-        response_text = f"⚠️️ Xatolik yuz berdi: {str(e)} ❌"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    for model_name in MODELS:
+        try:
+            payload = {
+                "model": model_name,
+                "messages": current_history[-1000000:]
+            }
+            response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=60)
+            if response.status_code == 200:
+                data = response.json()
+                response_text = data["choices"][0]["message"]["content"]
+                break
+            else:
+                last_error = response.text
+        except Exception as e:
+            last_error = str(e)
+            continue  
 
     if response_text:
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
+    else:
+        await message.answer(f"⚠️️ Xatolik yuz berdi:\n`{last_error}` ❌", parse_mode="Markdown")
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot smayliklar bilan boyitilgan holda va cheksiz xotira bilan ishga tushdi! 🚀🤖✨")
+    print("Bot Groq API va cheksiz xotira bilan ishga tushdi! 🚀🤖✨")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
