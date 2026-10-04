@@ -26,7 +26,6 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Нужная модель с вашего скриншота стоит на первом месте[span_1](start_span)[span_1](end_span)!
 MODELS = [
     "openai/gpt-oss-120b",
     "llama-3.1-70b-versatile",
@@ -34,7 +33,8 @@ MODELS = [
     "mixtral-8x7b-32768"
 ]
 
-ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split(",") if i.strip()]
+# Admin ID raqamlari endi Render Environment Variables orqali o'qiladi (vergul bilan ajratib yoziladi)
+ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "").split(",") if i.strip()]
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -106,7 +106,19 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
-    await message.answer("🤖 **AURAgpt Yordam Bo'limi** 💡\n\nBu bot iste'dodli dasturchi **Bunyodbek Zokirov** tomonidan yaratilgan! 🚀🔥", parse_mode="Markdown")
+    await message.answer(
+        "🤖 **AURAgpt Yordam Bo'limi** 💡\n\n"
+        "Bu bot iste'dodli dasturchi **Bunyodbek Zokirov** tomonidan yaratilgan! 🚀🔥\n\n"
+        "📌 **Asosiy buyruqlar:**\n"
+        "• /start - Botni qayta ishga tushirish va ro'yxatdan o'tish 🌟\n"
+        "• /help - Yordam olish ℹ️\n\n"
+        "🛠 **Admin buyruqlari:**\n"
+        "• /stats - Bot statistikasi 📊\n"
+        "• /ban [user_id] - Foydalanuvchini bloklash 🔴\n"
+        "• /unban [user_id] - Blokdan chiqarish 🟢\n"
+        "• /broadcast - Barcha foydalanuvchilarga xabar yuborish 📢",
+        parse_mode="Markdown"
+    )
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
@@ -115,6 +127,69 @@ async def cmd_stats(message: types.Message):
     total_users = len(verified_users_db)
     banned_users = len(banned_users_set)
     await message.answer(f"📊 **Statistika:**\n\n👥 Jami foydalanuvchilar: {total_users} ta 🌐\n🔴 Bloklanganlar: {banned_users} ta ⚠️", parse_mode="Markdown")
+
+@dp.message(Command("ban"))
+async def cmd_ban(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("⚠️ Foydalanish: `/ban [user_id]`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(args[1])
+        banned_users_set.add(target_id)
+        if target_id in verified_users_db:
+            del verified_users_db[target_id]
+        await message.answer(f"✅ `{target_id}` ID raqamli foydalanuvchi bloklandi! 🔴", parse_mode="Markdown")
+    except ValueError:
+        await message.answer("❌ Noto'g'ri ID format!")
+
+@dp.message(Command("unban"))
+async def cmd_unban(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("⚠️ Foydalanish: `/unban [user_id]`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(args[1])
+        if target_id in banned_users_set:
+            banned_users_set.remove(target_id)
+            await message.answer(f"✅ `{target_id}` ID raqamli foydalanuvchi blokdan chiqarildi! 🟢", parse_mode="Markdown")
+        else:
+            await message.answer("⚠️️ Bu foydalanuvchi bloklanganlar ro'yxatida yo'q.")
+    except ValueError:
+        await message.answer("❌ Noto'g'ri ID format!")
+
+@dp.message(Command("broadcast"))
+async def cmd_broadcast(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    await message.answer("📢 Barcha foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yuboring:")
+    await state.set_state(AuthState.waiting_for_broadcast)
+
+@dp.message(AuthState.waiting_for_broadcast)
+async def process_broadcast(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await state.clear()
+        return
+    
+    broadcast_text = message.text or message.caption or "[Media xabar]"
+    success = 0
+    fail = 0
+
+    for user_id in verified_users_db.keys():
+        try:
+            await bot.send_message(user_id, f"📢 **E'lon / Xabar:**\n\n{broadcast_text}", parse_mode="Markdown")
+            success += 1
+            await asyncio.sleep(0.05)
+        except Exception:
+            fail += 1
+
+    await message.answer(f"✅ Xabar tarqatildi!\n\n📤 Muvaffaqiyatli: {success} ta\n❌ Xatoliklar: {fail} ta")
+    await state.set_state(AuthState.authenticated)
 
 @dp.message(AuthState.waiting_for_email, F.text)
 async def process_email(message: types.Message, state: FSMContext):
@@ -150,7 +225,7 @@ async def process_email(message: types.Message, state: FSMContext):
         else:
             await message.answer(f"⚠️ Xatolik yuz berdi: {response.text} ❌")
     except Exception as e:
-        await message.answer(f"⚠️️ Tarmoq xatoligi: {str(e)} 🔌")
+        await message.answer(f"⚠️ Tarmoq xatoligi: {str(e)} 🔌")
 
 @dp.message(AuthState.waiting_for_code, F.text)
 async def process_code(message: types.Message, state: FSMContext):
@@ -214,11 +289,11 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠ Xatolik yuz berdi:\n`{last_error}` ❌", parse_mode="Markdown")
+        await message.answer(f"⚠️ Xatolik yuz berdi:\n`{last_error}` ❌", parse_mode="Markdown")
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot `openai/gpt-oss-120b` modeli bilan ishga tushdi! 🚀🤖✨")
+    print("Bot xavfsiz holatda ishga tushdi! 🚀🤖✨")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
