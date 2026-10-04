@@ -27,9 +27,10 @@ WORMGPT_URL = "https://wormgpt.app/v1/chat/completions"
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
-# Model nomi xatoligini oldini olish uchun yangilandi:
+# Model nomlarini kengaytirilgan ro'yxatga o'zgartirdik:
 MODELS_LIST = [
-    "wormgpt",
+    "gpt-4",
+    "gpt-4-turbo",
     "gpt-3.5-turbo"
 ]
 
@@ -39,7 +40,7 @@ ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "8795530550").split("
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- Xotiradagi ma'lumotlar bazasi (Database kerak emas) ---
+# --- Xotiradagi ma'lumotlar bazasi ---
 verified_users_db = {}   # {user_id: email}
 banned_users_set = set() # {user_id, ...}
 user_violations_db = {}  # {user_id: violations_count}
@@ -522,7 +523,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot bazasiz va WormGPT orqali ishga tushdi! 🚀🤖")
+    print("Bot yangi modellar ro'yxati bilan ishga tushdi! 🚀🤖")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
