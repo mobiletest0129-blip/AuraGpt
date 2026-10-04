@@ -27,8 +27,10 @@ WORMGPT_URL = "https://wormgpt.app/v1/chat/completions"
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
+# Model nomi xatoligini oldini olish uchun yangilandi:
 MODELS_LIST = [
-    "gpt-4o"
+    "wormgpt",
+    "gpt-3.5-turbo"
 ]
 
 # --- Adminlar ro'yxati ---
@@ -516,7 +518,7 @@ async def chat_with_ai(message: types.Message):
         save_message_to_db(user_id, "assistant", response_text)
         await message.answer(response_text, reply_markup=types.ReplyKeyboardRemove())
     else:
-        await message.answer(f"⚠️️ Xatolik:\n`{last_error}`", parse_mode="Markdown")
+        await message.answer(f"⚠ Xatolik:\n`{last_error}`", parse_mode="Markdown")
 
 async def main():
     Thread(target=run_flask).start()
