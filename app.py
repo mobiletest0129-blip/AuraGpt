@@ -26,11 +26,11 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")       
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")    
 
+# openai/gpt-oss-120b va boshqa faol modellar ro'yxati
 MODELS = [
     "openai/gpt-oss-120b",
     "llama-3.1-70b-versatile",
-    "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768"
+    "llama-3.1-8b-instant"
 ]
 
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_ID", "").split(",") if i.strip()]
@@ -128,7 +128,6 @@ async def cmd_stats(message: types.Message):
     banned_users = len(banned_users_set)
     await message.answer(f"📊 **Statistika:**\n\n👥 Jami foydalanuvchilar: {total_users} ta 🌐\n🔴 Bloklanganlar: {banned_users} ta ⚠️", parse_mode="Markdown")
 
-# --- REAL FOYDALANUVCHILAR RO'YXATINI CHIQARUVCHI BUYRUQ ---
 @dp.message(Command("users"))
 async def cmd_users(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
@@ -147,7 +146,6 @@ async def cmd_users(message: types.Message):
         text = text[:4000] + "\n\n... (ro'yxat juda uzun)"
         
     await message.answer(text, parse_mode="Markdown")
-# -----------------------------------------------------------
 
 @dp.message(Command("ban"))
 async def cmd_ban(message: types.Message):
@@ -314,7 +312,7 @@ async def chat_with_ai(message: types.Message):
 
 async def main():
     Thread(target=run_flask).start()
-    print("Bot /users buyrug'i bilan mukammal ishga tushdi! 🚀🤖✨")
+    print("Bot muvaffaqiyatli ishga tushdi! 🚀🤖✨")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
